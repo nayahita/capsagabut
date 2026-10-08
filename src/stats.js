@@ -42,9 +42,10 @@
       const s = rec(nm);
       if (!s) return;
       s.rounds += 1;
-      if (i === d.winner) { s.wins += 1; if (d.how === 'bomb') s.bombWins += 1; } else s.losses += 1;
+      const lost = d.mode === 'last' ? i === d.loser : i !== d.winner;
+      if (i === d.winner) { s.wins += 1; if (d.how === 'bomb') s.bombWins += 1; } else if (lost) s.losses += 1;
       const before = (d.scoresBefore || [])[i], after = (d.scoresAfter || [])[i];
-      if (typeof before === 'number' && typeof after === 'number') s.points += after - before;
+      if (d.mode !== 'last' && typeof before === 'number' && typeof after === 'number') s.points += after - before;
       s.lastPlayed = Date.now();
     });
     save();
@@ -56,7 +57,7 @@
     let rows = all();
     if (want.length) rows = rows.filter((r) => want.includes(key(r.name)));
     rows.sort((a, b) => b.wins - a.wins || b.winRate - a.winRate);
-    const cols = [['Ronde', 'rounds'], ['Menang', 'wins'], ['Win %', 'winRate'], ['Poin', 'points'], ['Streak terbaik', 'bestWinStreak'],
+    const cols = [['Ronde', 'rounds'], ['Habis duluan', 'wins'], ['Win %', 'winRate'], ['Kalah', 'losses'], ['Poin', 'points'], ['Streak terbaik', 'bestWinStreak'],
       ['Bad beat', 'badBeats'], ['Comeback', 'comebacks'], ['Upset', 'upsets'], ['Perfect', 'perfects'], ['Revenge', 'revenges'], ['Menang bom', 'bombWins']];
     const body = rows.length
       ? rows.map((r) => `<tr><th scope="row">${esc(r.name)}</th>${cols.map(([, f]) => `<td>${f === 'points' && r[f] > 0 ? '+' : ''}${r[f]}${f === 'winRate' ? '%' : ''}</td>`).join('')}</tr>`).join('')

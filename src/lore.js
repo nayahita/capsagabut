@@ -114,9 +114,10 @@
     return { status: 'new' };
   }
   const decisions = {};   // setup screen choices: normalized name → pid | 'new'
+  let renamed = {};       // pid → { from, to } for the match being set up
   // Called by the core (via CapsaHooks) right before 'game:start'. Returns one pid per seat.
   function assign(names, opt) {
-    opt = opt || {};
+    opt = opt || {}; renamed = {};
     const taken = new Set(), pids = [];
     names.forEach((name, i) => {
       const uid = opt.uids && opt.uids[i], claim = opt.claims && opt.claims[i], n = norm(name);
@@ -127,6 +128,7 @@
       if (!pid && claim !== 'new' && decisions[n] !== 'new') { const r = resolve(name, taken); if (r.status === 'known') pid = r.pid; }
       if (pid) {
         const p = L.profiles[pid];
+        if (norm(p.name) !== n) renamed[pid] = { from: p.name, to: String(name).trim() };
         if (norm(p.name) !== n) { if (!namesOf(p).includes(n)) p.aliases = [...new Set([...(p.aliases || []), p.name])].slice(-6); else p.aliases = (p.aliases || []).filter((a) => norm(a) !== n).concat(p.name); p.name = String(name).trim(); }
         if (uid) { p.uids = p.uids || {}; p.uids[uid] = true; }
       } else {
@@ -239,7 +241,7 @@
       const ps = (S.passes || {})[pid]; if (ps) { d.passes.playable += ps.playable || 0; d.passes.turns += ps.turns || 0; }
       const th = (S.think || {})[pid]; if (th) { d.think.sum += th.sum || 0; d.think.n += th.n || 0; }
       const mine = (S.moments || []).filter((m) => m.pid === pid).sort((a, b) => b.w - a.w).slice(0, 3)
-        .map((m) => ({ t: m.t || now, round: m.round, text: m.text, w: m.w, bad: !!m.bad }));
+        .map((m) => ({ t: m.t || now, round: m.round, text: m.text, w: m.w, bad: !!m.bad, type: m.type || null }));
       d.moments = [...d.moments, ...mine].filter((m) => now - m.t <= YEAR).slice(-CAP.moments);
       const leg = (S.legends || []).filter((x) => x.pid === pid).map((x) => ({ t: x.t || now, text: x.text }));
       d.legends = [...d.legends, ...leg].slice(-CAP.legends);
@@ -377,6 +379,6 @@
     ROAST_MS, REP0, norm, mode: () => mode, room: () => roomCode, canWrite, data: () => L,
     profiles: () => allProfiles(), profile, resolve, assign, rename, merge, forget, decisions,
     dossier, counters, bump, max, quotable, h2h, rkey, table, ledger, ledgerFor, commitMatch, roster: () => roster.slice(),
-    flush, _reset: () => { L = empty(); Object.keys(pend).forEach((k) => delete pend[k]); save(); },
+    renamed: () => Object.assign({}, renamed), flush, _reset: () => { L = empty(); Object.keys(pend).forEach((k) => delete pend[k]); save(); },
   };
 })();

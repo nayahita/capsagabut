@@ -169,6 +169,23 @@ Blueprint: "Capsa Game-Native Comedy Corpus v1". No new layer: core facts → me
   them), and reruns (same bit on the same player within 24 h → ×0.4). Every bit that plays is written to the ledger.
 - These signals have no bits yet: Comedy Bible v2 proposes them first.
 
+## 5d. v12: last-loses rule, significance, clutch, audio director, Bible v2
+
+- **Round rule** ("Main sampai satu kalah", default): players finish in order, the last one holding cards loses; standings
+  count losses. New fact `finish`; `round:end` carries `mode: 'last'`, `loser`, `order`, and losses as scores. Detectors,
+  stats, memory (streaks, favourite, spiral, threads, boasts) and bits use `lost(i)` / standings helpers so both rules work.
+- **Significance** (director): contradiction × visibility × depth × freshness must reach micro 1.5 / stage 2.5 / legendary 3.5.
+  Bits may declare `sig: { c, vis, depth }`. Freshness folds in target fatigue, 24 h reruns, and same mechanism within 3 min.
+- **Clutch gate**: no stage bits mid-round while two players still in the round sit on ≤ 2 cards or the mover has ≤ 10 s.
+- **Audio director** (`src/audio/director.js`): cue functions (legacy keys mapped), tier cooldowns with step-down,
+  exclusive comedy bus, seeded variants, same-room routing (host phone only), late performances play silent;
+  performances carry `at` (server time) so phones start together.
+- **Bible v2** (14 bits): rapat-panjang, terbukti, tanpa-modal, kembali-online, nama-baru, kartu-terbuka,
+  pengakuan-diterima, modal-awal, emote-dikembalikan, kebiasaan-baru, selamat-datang, rivalitas-resmi, kejadian-serupa,
+  sistem-prihatin (`kind: 'support'`, the only bit allowed to touch a spiraling player). New signals MEM_RENAMED, MEM_DEJA_VU
+  (typed moments), new stage step `emote`, bit hook `onPerform`.
+- Tests live in `tests/` (`bash tests/run.sh [--sim]`).
+
 ## 6. Adding a bit
 
 ```js

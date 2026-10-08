@@ -17,11 +17,11 @@ window.CAPSA_COMEDY = {
     },
     legendaryPerMatch: 1,
     heatWindowMs: 240000,         // recent performances inside this window (about two rounds) lower the chance…
-    heatPerPerformance: 1.2,      // …by 1 / (1 + 1.2 × count)
+    heatPerPerformance: 1.6,      // …by 1 / (1 + 1.6 × count)
     boredomPerRound: 0.35,        // every quiet round raises the chance by 35% …
     boredomMax: 2,                // … up to 2×
     callbackBoost: 1.5,           // callbacks are the payoff of memory, so they get a boost
-    sameModePenalty: 0.5,         // same comedy mode within 60 s gets halved
+    // significance bar (contradiction × visibility × depth × freshness): micro 1.5, stage 2.5, legendary 3.5 — see director.js
     maxChance: 0.95,
   },
 

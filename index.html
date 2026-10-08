@@ -83,6 +83,8 @@ button{font:inherit;color:inherit}
 .pill{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;padding:1px 7px;border-radius:999px;margin-left:6px;vertical-align:1px;text-transform:uppercase}
 .pill.pass{background:rgba(255,255,255,.1);color:var(--muted)}
 .pill.play{background:rgba(226,176,79,.18);color:var(--brass)}
+.pill.done{background:rgba(155,227,180,.16);color:#9be3b4}.pill.lost{background:rgba(232,86,77,.2);color:#ff9b93}
+.seat.done{opacity:.6}
 .pill.turn{background:var(--brass);color:var(--brass-ink)}
 
 /* board */
@@ -466,13 +468,13 @@ function cardHTML(c,{btn=false,sel=false,must=false}={}){
 const backHTML=(cls='')=>`<div class="card back ${cls}" aria-hidden="true"></div>`;
 
 /* ---------- sound (synthesized, no files) ---------- */
-const SOUND_MODES=['classic','meme','off'],SOUND_LABEL={classic:'Klasik',meme:'Meme',off:'Mati'};
-let soundMode='meme';
+const SOUND_MODES=['classic','meme','off'],SOUND_LABEL={classic:'Klasik',meme:'Rame',off:'Mati'};
+let soundMode='classic';
 try{const m=localStorage.getItem('capsa-sound-pack');if(SOUND_MODES.includes(m))soundMode=m}catch(e){}
 function setSoundMode(m){
   soundMode=m;soundOn=m!=='off';
   try{localStorage.setItem('capsa-sound-pack',m)}catch(e){}
-  if(m==='meme')M.airhorn();else if(m==='classic')CLASSIC.skip();
+  if(m==='meme')M.pop();else if(m==='classic')CLASSIC.skip();
 }
 let soundOn=soundMode!=='off';
 let AC=null,BUS=null;
@@ -482,8 +484,10 @@ function ac(){
   return AC;
 }
 let muteUntil=0;
-function tone(f,dur=.15,{type='triangle',vol=.15,delay=0,to=null,vib=0,vibRate=6,lp=0}={}){
-  if(!soundOn||Date.now()<muteUntil)return;const a=ac();if(!a)return;
+/* crit = play-critical (your turn, countdown): never ducked by comedy silence, never muted by same-room routing */
+const tableMuted=()=>!!(window.CapsaAudio&&window.CapsaAudio.tableMuted&&window.CapsaAudio.tableMuted());
+function tone(f,dur=.15,{type='triangle',vol=.15,delay=0,to=null,vib=0,vibRate=6,lp=0,crit=false}={}){
+  if(!soundOn||(!crit&&(Date.now()<muteUntil||tableMuted())))return;const a=ac();if(!a)return;
   const t=a.currentTime+delay,o=a.createOscillator(),g=a.createGain();
   o.type=type;o.frequency.setValueAtTime(f,t);if(to)o.frequency.exponentialRampToValueAtTime(to,t+dur);
   if(vib){const l=a.createOscillator(),lg=a.createGain();l.frequency.value=vibRate;lg.gain.value=vib;l.connect(lg).connect(o.frequency);l.start(t);l.stop(t+dur+.05)}
@@ -492,7 +496,7 @@ function tone(f,dur=.15,{type='triangle',vol=.15,delay=0,to=null,vib=0,vibRate=6
   node.connect(g).connect(BUS);o.start(t);o.stop(t+dur+.05);
 }
 function noise(dur=.5,{vol=.4,delay=0,type='lowpass',f0=1200,f1=80,q=1,curve=2}={}){
-  if(!soundOn||Date.now()<muteUntil)return;const a=ac();if(!a)return;
+  if(!soundOn||Date.now()<muteUntil||tableMuted())return;const a=ac();if(!a)return;
   const t=a.currentTime+delay,len=Math.max(1,Math.floor(a.sampleRate*dur)),buf=a.createBuffer(1,len,a.sampleRate),d=buf.getChannelData(0);
   for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,curve);
   const s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain();
@@ -504,7 +508,10 @@ const CLASSIC={
   timeout:()=>{},
   pass:()=>tone(240,.14,{type:'triangle',vol:.07,to:170}),
   card:()=>noise(.08,{vol:.35,type:'highpass',f0:2500,f1:6000}),
-  tick:()=>tone(1046,.05,{type:'square',vol:.05}),
+  tick:()=>tone(1046,.05,{type:'square',vol:.05,crit:true}),
+  nudge:()=>{tone(784,.09,{type:'sine',vol:.08,crit:true});tone(1175,.16,{type:'sine',vol:.07,delay:.1,crit:true})},
+  finish:()=>{tone(659,.1,{type:'triangle',vol:.05});tone(988,.22,{type:'triangle',vol:.05,delay:.09})},
+  resolve:()=>chord([392,523,659],.7,{type:'triangle',vol:.045}),
   pair:()=>{noise(.06,{vol:.3,type:'highpass',f0:2500,f1:6000,delay:.07});tone(660,.08,{vol:.06,delay:.07})},
   two:()=>{tone(1318,.5,{type:'sine',vol:.09});tone(1976,.4,{type:'sine',vol:.05,delay:.05})},
   triple:()=>[196,196,262].forEach((f,i)=>tone(f,.18,{type:'sawtooth',vol:.09,delay:i*.13,lp:1400})),
@@ -544,28 +551,24 @@ const M={
   woodblock:(f=1100,d=0)=>{tone(f,.05,{type:'triangle',vol:.16,delay:d});noise(.02,{vol:.2,delay:d,type:'bandpass',f0:f*2,f1:f*1.5,q:6})},
 };
 let tickAlt=false;
+/* "Rame" pack: livelier table sounds. Since v12 it never plays stock trope sounds on automatic moments
+   (wins, losses, timeouts, full house, bombs, auto-skip): those are reserved so comedy cues keep their meaning. */
 const MEME={
   card:()=>M.pop(),
   pair:()=>M.pop(.1),
-  pass:()=>M.buzzer(),
-  tick:()=>{tickAlt=!tickAlt;M.woodblock(tickAlt?1250:900)},
+  tick:()=>{tickAlt=!tickAlt;tone(tickAlt?1250:900,.05,{type:'triangle',vol:.16,crit:true})},
   two:()=>M.bell(),
-  timeout:()=>M.crickets(),
   triple:()=>M.boing(),
   straight:()=>{CLASSIC.straight();M.slide(.1,true)},
-  flush:()=>{M.scratch();CLASSIC.flush()},
-  full:()=>M.airhorn(),
-  bomb:()=>{CLASSIC.fuse();M.bigBoom(.68);M.airhorn(1.5,.7)},
-  sflush:()=>{CLASSIC.fuse();M.bigBoom(.68);M.airhorn(1.4,1.2);M.airhorn(2.2,.9)},
-  skip:()=>M.rimshot(),
-  win:()=>{M.airhorn(0,.9);CLASSIC.win()},
+  bomb:()=>{CLASSIC.fuse();M.bigBoom(.68)},
+  sflush:()=>{CLASSIC.fuse();M.bigBoom(.68);M.bell(1.6)},
   emote:{
-    laugh:()=>M.honk(),
-    cry:()=>M.sadTrombone(),
+    laugh:()=>CLASSIC.emote.laugh(),
+    cry:()=>CLASSIC.emote.cry(),
     angry:()=>M.clang(),
     thumbs:()=>M.slide(0,true),
-    shock:()=>M.bigBoom(),
-    cool:()=>{M.scratch();CLASSIC.emote.cool()},
+    shock:()=>CLASSIC.emote.shock(),
+    cool:()=>CLASSIC.emote.cool(),
   }
 };
 const SFX=new Proxy({},{get:(_,k)=>(soundMode==='meme'&&MEME[k])||CLASSIC[k]});
@@ -746,24 +749,33 @@ window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardC
   view:()=>G?{phase:G.phase,round:G.round,turn:G.turn,n:G.n,names:G.players.map(p=>p.name),counts:G.players.map(p=>p.hand.length),
     scores:G.players.map(p=>p.score),table:G.table?{cards:G.table.cards,by:G.table.by,combo:G.table.combo.name}:null,
     online:isOnline(),me:G.online?G.online.me:null,authority:!G.online||G.online.isHost,timer:G.opts.timer,
-    hand:G.online&&G.players[G.online.me]?G.players[G.online.me].hand.slice():null,pids:G.pids||null,room:NET?NET.code:null}
+    hand:G.online&&G.players[G.online.me]?G.players[G.online.me].hand.slice():null,pids:G.pids||null,room:NET?NET.code:null,
+    sameRoom:!!(G.online&&G.opts.sameRoom),mode:lastMode()?'last':'points',left:G.phase==='turn'&&G.deadline?G.deadline-Date.now():null,
+    active:G.players.map(p=>!p.done)}
     :{phase:NET?'lobby':'setup',online:!!NET,authority:!NET||!!NET.isHost,me:null,names:[],room:NET?NET.code:null},
   /* the room this phone is in (online), for modules that keep notes in it; only the host may write */
   room:()=>NET?{code:NET.code,isHost:!!NET.isHost,uid:NET.uid,players:NET.players,
     saveLore:(obj)=>{if(NET&&NET.isHost)return NET.room.child('lore').set(JSON.parse(JSON.stringify(obj))).catch(e=>console.warn(e))},
     claim:(pid)=>{if(NET)return NET.room.child('players/'+NET.uid+'/claim').set(pid||null).catch(e=>console.warn(e))}}:null,
+  serverNow:()=>serverNow(),
   holdTimer:(ms)=>{if(G&&G.phase==='turn'&&G.deadline&&(!G.online||G.online.isHost)){G.deadline+=ms;render()}},
   duck:(ms)=>{muteUntil=Math.max(muteUntil,Date.now()+ms)}};
 
 /* ---------- state ---------- */
-let setup={n:4,names:['','','',''],triple:true,bomb:false,timer:30,bombWin:true,autoSkip:true,mode:'normal',style:'local',myName:'',joinCode:''};
+let setup={n:4,names:['','','',''],triple:true,bomb:false,timer:30,bombWin:true,autoSkip:true,lastLoses:true,mode:'normal',style:'local',myName:'',joinCode:''};
 try{const s=JSON.parse(localStorage.getItem('capsa-setup')||'null');if(s)Object.assign(setup,s)}catch(e){}
 setup.joinCode='';
 const hashCode=(location.hash||'').slice(1).toUpperCase();
 if(/^[A-Z]{4}$/.test(hashCode)){setup.style='online';setup.joinCode=hashCode}
 let G=null, showRules=false, confirmReset=false, picker=null, showStats=false, statsAll=false, statsArm=false;
 const saveSetup=()=>{try{localStorage.setItem('capsa-setup',JSON.stringify({...setup,joinCode:''}))}catch(e){}};
-const optsFromSetup=()=>({triple:setup.triple,bomb:setup.bomb,timer:setup.timer,bombWin:setup.bombWin,autoSkip:setup.autoSkip,mode:setup.mode});
+const optsFromSetup=()=>({triple:setup.triple,bomb:setup.bomb,timer:setup.timer,bombWin:setup.bombWin,autoSkip:setup.autoSkip,lastLoses:setup.lastLoses!==false,sameRoom:!!setup.sameRoom,mode:setup.mode});
+/* "Main sampai satu kalah": the round goes on after the first player finishes; the last one holding cards loses.
+   Standings then count losses (lower is better). Off = the old rule: first to finish wins, the rest pay card points. */
+const lastMode=()=>!!(G&&G.opts&&G.opts.lastLoses!==false);
+const active=i=>!G.players[i].done;
+const activeSeats=()=>G.players.map((_,i)=>i).filter(active);
+function nextActive(s){for(let k=1;k<=G.n;k++){const t=(s+k)%G.n;if(active(t))return t}return s}
 const isOnline=()=>!!(G&&G.online);
 const myTurn=()=>!G.online||G.turn===G.online.me;
 
@@ -807,12 +819,20 @@ function playEvent(ev){
     case 'skip':{const d0=ev.d0||200;
       setTimeout(()=>{banner('Gak ada yang bisa lawan!',`${ev.who} jalan lagi`,'skip');SFX.skip()},d0);
       setTimeout(()=>emote(ev.grumpy,'angry',true),d0+700);break}
-    case 'timeout':SFX.timeout();setTimeout(()=>emote(ev.seat,'cry',true),soundMode==='meme'?1700:100);break;
+    case 'timeout':setTimeout(()=>emote(ev.seat,'cry',true,true),100);break;
     case 'win':setTimeout(()=>{
         SFX.win();if(!RM.matches)confetti(170);banner(`${ev.who} menang!`,ev.how==='bomb'?'Pakai bom':'Kartu habis');
-        setTimeout(()=>{if(!G)return;emote(ev.seat,'laugh',true);let first=true;
-          G.players.forEach((_,j)=>{if(j!==ev.seat){const s=!first;first=false;setTimeout(()=>emote(j,'cry',true,s),450+j*160)}})},900);
+        setTimeout(()=>{if(!G)return;emote(ev.seat,'laugh',true,true);
+          G.players.forEach((_,j)=>{if(j!==ev.seat)setTimeout(()=>emote(j,'cry',true,true),450+j*160)})},900);
       },ev.how==='bomb'?2500:300);break;
+    case 'finish':setTimeout(()=>{
+        SFX.finish();banner(`${ev.who} habis!`,ev.how==='bomb'?`Pakai bom · juara ${ev.place}`:`Juara ${ev.place} · sisa ${ev.left} orang`);
+        setTimeout(()=>{if(G)emote(ev.seat,'laugh',true,true)},700);
+      },ev.how==='bomb'?2500:250);break;
+    case 'lose':setTimeout(()=>{
+        SFX.resolve();banner(`${ev.who} kalah!`,`${ev.first} habis duluan`);
+        setTimeout(()=>{if(G)emote(ev.seat,'cry',true,true)},600);
+      },300);break;
     case 'emote':emote(ev.seat,ev.e,true);break;
   }
 }
@@ -824,7 +844,8 @@ function sendEmote(i,e){
 function startRound(){
   let hands=G.opts.mode==='mayhem'?dealMayhem(G.n):null;
   if(!hands){const deck=shuffle([...Array(52).keys()]);hands=G.players.map((_,i)=>deck.slice(i*13,i*13+13))}
-  G.players.forEach((p,i)=>{p.hand=hands[i];p.last=''});
+  G.players.forEach((p,i)=>{p.hand=hands[i];p.last='';p.done=0;p.doneHow=''});
+  G.order=[];G.passed=new Set();
   G.dealt=G.players.map(p=>dealtSummary(p.hand));
   G.round++;G.table=null;G.sel=new Set();G.log=[];G.result=null;G.err='';G.winHow='';
   let starter=0,must=null;
@@ -832,7 +853,7 @@ function startRound(){
     let min=99;G.players.forEach((p,i)=>p.hand.forEach(c=>{if(c<min){min=c;starter=i}}));
     must=min;log(`${G.players[starter].name} pegang ${label(min)}, jalan duluan`);
   }else{
-    starter=G.lastWinner;log(`${G.players[starter].name} menang ronde lalu, jalan duluan`);
+    starter=G.lastWinner;log(`${G.players[starter].name} ${lastMode()?'habis duluan':'menang'} ronde lalu, jalan duluan`);
   }
   G.turn=starter;G.must=must;G.hint=null;G.deadline=null;
   fact('round:start',{round:G.round,names:G.players.map(p=>p.name),pids:G.pids||null,scores:G.players.map(p=>p.score),starter});
@@ -853,37 +874,58 @@ function doPlay(){
   const p=G.players[G.turn], cards=[...G.sel], prev=G.table;
   p.hand=p.hand.filter(c=>!G.sel.has(c));
   G.table={cards:sortHand(cards,'rank'),combo:r.combo,by:G.turn};
-  p.last=r.combo.name;G.must=null;G.sel=new Set();G.hint=null;
+  p.last=r.combo.name;G.must=null;G.sel=new Set();G.hint=null;G.passed=new Set();
   log(`${p.name}: ${r.combo.name} ${G.table.cards.map(label).join(' ')}`);
   fx({t:'combo',seat:G.turn,who:p.name,name:r.combo.name,key:r.combo.key,cards:G.table.cards});
   fact('play',{seat:G.turn,name:p.name,combo:r.combo.name,cat:r.combo.cat,size:r.combo.size,cards:G.table.cards,counts:G.players.map(q=>q.hand.length),
     prev:prev?{combo:prev.combo.name,size:prev.combo.size,cards:prev.cards,by:prev.by}:null,t:Date.now(),...turnInfo()});
-  if(r.combo.cat>=4&&G.opts.bombWin){log(`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
-  if(!p.hand.length) return endRound(G.turn,'habis');
+  if(r.combo.cat>=4&&G.opts.bombWin){
+    if(!lastMode()){log(`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
+    log(`BOM! ${p.name} langsung selesai`);p.hand=[];
+    if(finish(G.turn,'bomb'))return;
+  }else if(!p.hand.length){
+    if(!lastMode()) return endRound(G.turn,'habis');
+    if(finish(G.turn,'habis'))return;
+  }
   if(G.opts.autoSkip&&nobodyCanAnswer()){
-    G.table=null;G.players.forEach(q=>q.last='');
-    log(`Gak ada yang bisa lawan. ${p.name} jalan lagi`);
-    const me=G.turn;fact('skip',{seat:me,name:p.name});
-    fx({t:'skip',who:p.name,d0:r.combo.size>=3?1000:200,grumpy:rnd(G.players.map((_,j)=>j).filter(j=>j!==me))});
-    reveal();render();return;
+    const me=G.turn,lead=active(me)?me:nextActive(me);
+    G.table=null;G.passed=new Set();G.players.forEach(q=>q.last=q.done?q.last:'');
+    log(`Gak ada yang bisa lawan. ${G.players[lead].name} jalan ${lead===me?'lagi':'duluan'}`);
+    fact('skip',{seat:lead,name:G.players[lead].name,by:me});
+    fx({t:'skip',who:G.players[lead].name,d0:r.combo.size>=3?1000:200,grumpy:rnd(activeSeats().filter(j=>j!==lead).concat(lead===me?[]:[me]))});
+    G.turn=lead;reveal();render();return;
   }
   advance();
 }
 function turnInfo(){return {thinkMs:G.turnStart?Date.now()-G.turnStart:null,cancels:G.cancels||0}}
 function nobodyCanAnswer(){
-  return G.players.every((q,i)=>i===G.turn||findPlays(q.hand,G.table,null,G.opts).length===0);
+  return G.players.every((q,i)=>i===G.turn||q.done||findPlays(q.hand,G.table,null,G.opts).length===0);
+}
+/* last-loses rule: seat just played its last card (or a bomb). Returns true when the round is over. */
+function finish(seat,how){
+  const p=G.players[seat];G.order.push(seat);p.done=G.order.length;p.doneHow=how;p.last=`Juara ${p.done}`;
+  log(`${p.name} habis! Juara ${p.done}`);
+  fact('finish',{seat,name:p.name,place:p.done,how,counts:G.players.map(q=>q.hand.length)});
+  const left=activeSeats();
+  if(left.length<=1){endRound(G.order[0],G.players[G.order[0]].doneHow||how);return true}
+  fx({t:'finish',seat,who:p.name,place:p.done,how,left:left.length});
+  return false;
 }
 function doPass(){
   if(!G.table) return;
   const p=G.players[G.turn],could=findPlays(p.hand,G.table,null,G.opts).map(g=>g.name),hadPlay=could.length>0;
-  p.last='Pass';G.sel=new Set();log(`${p.name} pass`);fx({t:'pass'});
+  p.last='Pass';G.sel=new Set();G.passed.add(G.turn);log(`${p.name} pass`);fx({t:'pass'});
   fact('pass',{seat:G.turn,name:p.name,timeout:false,hadPlay,could,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by},...turnInfo()});advance();
 }
 function advance(){
-  const t=(G.turn+1)%G.n;
-  if(G.table&&t===G.table.by){
-    G.table=null;G.players.forEach(p=>p.last='');
-    log(`Semua pass. ${G.players[t].name} bebas jalan`);
+  let t=nextActive(G.turn);
+  if(G.table){
+    const owner=G.table.by,others=activeSeats().filter(i=>i!==owner);
+    if(others.every(i=>G.passed&&G.passed.has(i))){
+      t=active(owner)?owner:nextActive(owner);
+      G.table=null;G.passed=new Set();G.players.forEach(p=>{if(!p.done)p.last=''});
+      log(`Semua pass. ${G.players[t].name} bebas jalan`);
+    }
   }
   G.turn=t;G.hint=null;G.deadline=null;
   if(isOnline())reveal();else G.phase='handoff';
@@ -897,7 +939,7 @@ function timeout(){
   if(!G||G.phase!=='turn') return;
   const p=G.players[G.turn];G.deadline=null;
   if(G.table){
-    const who=G.turn;p.last='Pass';G.sel=new Set();log(`${p.name} kehabisan waktu, otomatis pass`);
+    const who=G.turn;p.last='Pass';G.sel=new Set();G.passed.add(who);log(`${p.name} kehabisan waktu, otomatis pass`);
     const could=findPlays(p.hand,G.table,null,G.opts).map(g=>g.name);
     fact('pass',{seat:who,name:p.name,timeout:true,hadPlay:could.length>0,could,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by},...turnInfo()});advance();
     fx({t:'timeout',seat:who});
@@ -933,6 +975,7 @@ setInterval(()=>{
   el.classList.toggle('low',s<=10);
 },200);
 function endRound(w,how){
+  if(lastMode())return endRoundLast(w,how);
   G.winHow=how;G.deadline=null;
   fx({t:'win',seat:w,who:G.players[w].name,how});
   const scoresBefore=G.players.map(p=>p.score),counts=G.players.map(p=>p.hand.length);
@@ -945,6 +988,21 @@ function endRound(w,how){
   G.players[w].score+=total;G.result[w].gain=total;
   fact('round:end',{round:G.round,winner:w,how,names:G.players.map(p=>p.name),counts,penalties:G.result.map(r=>r.pen),
     hands:G.players.map(p=>[...p.hand]),final:G.table?{combo:G.table.combo.name,cards:G.table.cards}:null,scoresBefore,scoresAfter:G.players.map(p=>p.score),dealt:G.dealt||null,delay:how==='bomb'?3600:1900});
+  G.lastWinner=w;G.phase='end';render();
+}
+/* last-loses rule: the round ends when one player still holds cards. That player gets one loss. */
+function endRoundLast(w,how){
+  G.winHow=how;G.deadline=null;
+  const loser=activeSeats()[0]??G.order[G.order.length-1],L=G.players[loser];
+  G.order.push(loser);L.done=G.order.length;L.last='Kalah';
+  const scoresBefore=G.players.map(p=>p.score),counts=G.players.map(p=>p.hand.length);
+  const c=L.hand.length,m=c===13?3:c>=10?2:1;
+  G.result=G.players.map((p,i)=>i===loser?{place:p.done,c,m,pen:c*m,hand:[...p.hand],lost:true}:{place:p.done,c:0,m:1,pen:0,hand:[]});
+  L.score+=1;
+  fx({t:'lose',seat:loser,who:L.name,first:G.players[w].name,firstSeat:w,how});
+  fact('round:end',{round:G.round,winner:w,loser,order:G.order.slice(),how,mode:'last',names:G.players.map(p=>p.name),counts,
+    penalties:G.result.map(r=>r.pen),hands:G.players.map(p=>[...p.hand]),final:G.table?{combo:G.table.combo.name,cards:G.table.cards,by:G.table.by}:null,
+    scoresBefore,scoresAfter:G.players.map(p=>p.score),dealt:G.dealt||null,delay:1900});
   G.lastWinner=w;G.phase='end';render();
 }
 function uiPlay(){
@@ -1132,7 +1190,9 @@ function hostRestore(s,hands){
      players:s.names.map((name,i)=>({name,score:(s.scores||[])[i]||0,last:unLast((s.last||[])[i]),hand:hands[s.uids[i]]||[]})),
      turn:s.turn,phase:s.phase,log:s.log||[],must:s.must>=0?s.must:null,
      table:s.table?{cards:s.table.cards,by:s.table.by,combo:s.table.combo}:null,
-     result:s.result||null,winHow:s.winHow==='none'?'':s.winHow,sel:new Set(),hint:null};
+     result:s.result||null,winHow:s.winHow==='none'?'':s.winHow,sel:new Set(),hint:null,
+     order:s.order||[],passed:new Set(s.passed||[])};
+  G.order.forEach((seat,k)=>{const p=G.players[seat];if(p){p.done=k+1}});
   NET.lastPub='';
   if(G.phase==='turn')reveal();
   render();flushActions();
@@ -1144,7 +1204,7 @@ function publish(){
     turn:G.turn,phase:G.phase,round:G.round,log:G.log,must:G.must==null?-1:G.must,
     table:G.table?{cards:G.table.cards,by:G.table.by,combo:G.table.combo}:false,
     deadline:G.deadline?Math.round(G.deadline+NET.offset):0,lastWinner:G.lastWinner==null?-1:G.lastWinner,
-    winHow:G.winHow||'none',result:G.result||false};
+    winHow:G.winHow||'none',result:G.result||false,order:G.order&&G.order.length?G.order:false,passed:G.passed&&G.passed.size?[...G.passed]:false};
   const hands={};G.uids.forEach((u,i)=>{hands[u]=G.players[i].hand.length?G.players[i].hand:false});
   const js=JSON.stringify([s,hands]);if(js===NET.lastPub)return;NET.lastPub=js;
   NET.room.update(JSON.parse(JSON.stringify({state:s,hands,'meta/status':G.phase==='end'?'end':'playing'}))).catch(e=>console.warn(e));
@@ -1159,10 +1219,10 @@ function applyState(){
   Object.assign(G,{n:s.n,opts:s.opts,uids:s.uids,pids:s.pids||null,turn:s.turn,phase:s.phase,round:s.round,log:s.log||[],
     must:s.must>=0?s.must:null,table:s.table?{cards:s.table.cards,by:s.table.by,combo:s.table.combo}:null,
     deadline:s.deadline?s.deadline-NET.offset:null,lastWinner:s.lastWinner>=0?s.lastWinner:null,
-    winHow:s.winHow==='none'?'':s.winHow,result:s.result||null});
+    winHow:s.winHow==='none'?'':s.winHow,result:s.result||null,order:s.order||[]});
   G.online.me=me;
   G.players=s.names.map((name,i)=>({name,score:(s.scores||[])[i]||0,last:unLast((s.last||[])[i]),
-    hand:i===me?myHand:Array((s.counts||[])[i]||0).fill(-1)}));
+    hand:i===me?myHand:Array((s.counts||[])[i]||0).fill(-1),done:(s.order||[]).indexOf(i)+1}));
   if(prevTurn!==G.turn||prevPhase!==G.phase||prevRound!==G.round){G.sel=new Set();G.hint=null;G.lastTick=null;G.pending=0;G.cancels=0}
   G.sel=new Set([...G.sel].filter(c=>myHand.includes(c)));
   render();
@@ -1227,7 +1287,7 @@ function headerHTML(){
   let meta;
   if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v11`;
+  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v12`;
   const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
@@ -1265,6 +1325,7 @@ function optionsHTML(){
         <label class="check"><input type="checkbox" id="opt-bombwin" data-opt="bombWin" ${setup.bombWin?'checked':''}><span>Bom langsung menang<small>Yang buang Four of a Kind / Straight Flush langsung menang ronde</small></span></label>
         <label class="check"><input type="checkbox" id="opt-bomb" data-opt="bomb" ${setup.bomb?'checked':''}><span>Bom bisa makan 2<small>Four of a Kind / Straight Flush boleh dibuang buat makan kartu 2 satuan</small></span></label>
         <label class="check"><input type="checkbox" id="opt-skip" data-opt="autoSkip" ${setup.autoSkip?'checked':''}><span>Auto-skip<small>Kalau gak ada yang bisa lawan, giliran langsung balik ke yang buang</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-last" data-opt="lastLoses" ${setup.lastLoses!==false?'checked':''}><span>Main sampai satu kalah<small>Yang habis duluan aman, sisanya lanjut lawan-lawanan. Yang terakhir masih pegang kartu kalah. Klasemen ngitung jumlah kalah.</small></span></label>
       </div>`;
 }
 function setupHTML(){
@@ -1284,7 +1345,8 @@ function setupHTML(){
       <div class="or-row"><span>atau jadi host</span></div>
       <button class="btn" data-act="create-room" style="justify-self:start">Bikin room baru</button>
       ${netMsg?`<p class="netmsg ${netMsg.bad?'bad':''}" role="status">${esc(netMsg.text)}</p>`:''}
-      <p class="hint">Pengaturan di bawah ini dipakai kalau lu yang bikin room.</p>`;
+      <p class="hint">Pengaturan di bawah ini dipakai kalau lu yang bikin room.</p>
+      <label class="check"><input type="checkbox" id="opt-same" data-opt="sameRoom" ${setup.sameRoom?'checked':''}><span>Main di satu tempat<small>Semua duduk bareng: suara meja dan suara komedi cuma keluar dari HP host biar gak gema. Suara giliran lu tetap di HP masing-masing.</small></span></label>`;
   return `<section class="setup">
     <div class="hero">
       ${online?'<h2>Mabar dari HP <span>masing-masing</span>.</h2><p>Satu orang bikin room, yang lain gabung pakai kode 4 huruf. Kartu lu cuma kelihatan di HP lu, emote lawan nongol di layar semua orang.</p>'
@@ -1305,7 +1367,7 @@ function lobbyHTML(){
   const list=Object.entries(NET.players||{}).filter(([,p])=>p&&p.name).sort((a,b)=>(a[1].joined||0)-(b[1].joined||0));
   const host=NET.meta.host,me=NET.uid,o=NET.meta.opts||{};
   const link=location.href.split('#')[0]+'#'+NET.code;
-  const optsTxt=[o.mode==='mayhem'?'Mayhem':'Normal',o.timer?`Timer ${o.timer} dtk`:'Tanpa timer',o.triple?'Triple boleh':'Tanpa Triple',o.bombWin?'Bom langsung menang':'',o.bomb?'Bom makan 2':'',o.autoSkip?'Auto-skip':''].filter(Boolean);
+  const optsTxt=[o.mode==='mayhem'?'Mayhem':'Normal',o.timer?`Timer ${o.timer} dtk`:'Tanpa timer',o.triple?'Triple boleh':'Tanpa Triple',o.bombWin?'Bom langsung menang':'',o.bomb?'Bom makan 2':'',o.autoSkip?'Auto-skip':'',o.lastLoses!==false?'Main sampai satu kalah':'Yang habis duluan menang',o.sameRoom?'Suara dari HP host':''].filter(Boolean);
   return `<section class="lobby">
     <div class="code-card">
       <span class="lbl">Kode room</span>
@@ -1328,15 +1390,15 @@ function lobbyHTML(){
 }
 function seatsHTML(){
   return `<section class="seats" aria-label="Pemain">${G.players.map((p,i)=>{
-    const now=i===G.turn&&G.phase!=='end';
+    const now=i===G.turn&&G.phase!=='end',lm=lastMode();
     const isMe=isOnline()&&i===G.online.me;
     const off=isOnline()&&NET&&NET.players[G.uids[i]]&&NET.players[G.uids[i]].online===false;
-    const pill=off?'<span class="pill off">offline</span>':now?'<span class="pill turn">giliran</span>':p.last==='Pass'?'<span class="pill pass">pass</span>':p.last?`<span class="pill play">${esc(p.last)}</span>`:'';
+    const pill=off?'<span class="pill off">offline</span>':now?'<span class="pill turn">giliran</span>':p.done&&lm?(p.last==='Kalah'?'<span class="pill lost">kalah</span>':`<span class="pill done">juara ${p.done}</span>`):p.last==='Pass'?'<span class="pill pass">pass</span>':p.last?`<span class="pill play">${esc(p.last)}</span>`:'';
     const canEmote=!isOnline()||isMe;
-    return `<div class="seat ${now?'now':''}" id="seat-${i}">
+    return `<div class="seat ${now?'now':''} ${p.done&&lm&&G.phase!=='end'?'done':''}" id="seat-${i}">
       <div class="card back mini" aria-hidden="true"></div>
       <div class="nm">${esc(p.name)}${isMe?' <small class="you">(lu)</small>':''}${pill}</div>
-      <div class="sc">${p.score>0?'+':''}${p.score}<small>poin</small></div>
+      <div class="sc">${lm?`${p.score}<small>kalah</small>`:`${p.score>0?'+':''}${p.score}<small>poin</small>`}</div>
       ${canEmote?`<button class="emo-btn" data-emote-open="${i}" aria-expanded="${picker===i}" aria-label="Emote ${esc(p.name)}" title="Emote">${mascotSVG('laugh').replace('m-laugh','m-icon')}</button>`:'<span></span>'}
       <div class="ct">${p.hand.length} kartu</div>
     </div>`}).join('')}</section>${pickerHTML()}`;
@@ -1352,7 +1414,9 @@ function boardHTML(){
   if(t){
     inner=`<div class="who">${esc(G.players[t.by].name)} buang <em>${t.combo.name}</em></div><div class="played">${t.cards.map(c=>cardHTML(c)).join('')}</div>`;
   }else if(G.phase==='end'){
-    inner=`<div class="who"><em>${esc(G.players[G.lastWinner].name)}</em> habis duluan!</div><div class="sub">Ronde ${G.round} selesai.</div>`;
+    const lz=lastMode()&&G.result?G.result.findIndex(r=>r&&r.lost):-1;
+    inner=lz>=0?`<div class="who"><em>${esc(G.players[lz].name)}</em> kalah</div><div class="sub">Ronde ${G.round} selesai. ${esc(G.players[G.lastWinner].name)} habis duluan.</div>`
+      :`<div class="who"><em>${esc(G.players[G.lastWinner].name)}</em> habis duluan!</div><div class="sub">Ronde ${G.round} selesai.</div>`;
   }else{
     inner=`<div class="who">Meja kosong</div><div class="sub">${esc(G.players[G.turn].name)} bebas buka pakai kombinasi apa aja${G.must!=null?`, asal ada <b>${label(G.must)}</b>`:''}.</div>`;
   }
@@ -1376,6 +1440,19 @@ function zoneHTML(){
       <button class="btn primary" data-act="reveal">Buka kartu ${esc(p.name)}</button>
     </div></section>`;
   }
+  if(G.phase==='end'&&lastMode()&&G.result){
+    const order=G.players.map((q,i)=>({q,i,r:G.result[i]||{}})).sort((a,b)=>(a.r.place||9)-(b.r.place||9));
+    const rows=order.map(({q,i,r})=>`<tr class="${r.lost?'lost-row':''}"><td class="num">${r.lost?'<span class="pill lost">kalah</span>':`#${r.place||'-'}`}</td>
+        <td><b>${esc(q.name)}</b>${isOnline()&&i===G.online.me?' <small class="you">(lu)</small>':''}</td>
+        <td><div class="left">${r.lost?sortHand(r.hand&&r.hand.length?r.hand:q.hand.filter(c=>c>=0),'rank').map(c=>cardHTML(c)).join(''):'<span style="color:var(--muted)">habis</span>'}</div></td>
+        <td class="num"><b>${q.score}</b></td></tr>`).join('');
+    const canNext=!isOnline()||G.online.isHost,L=order[order.length-1];
+    return `<section class="zone"><div class="zone-head"><h2>Hasil ronde ${G.round}<small>${esc(L.q.name)} kalah${L.r.c?`, sisa ${L.r.c} kartu`:''} · ${esc(G.players[G.lastWinner].name)} habis duluan${G.winHow==='bomb'?' pakai bom 💣':''}</small></h2></div>
+      <div class="tbl"><table class="result"><thead><tr><th>Urutan</th><th>Pemain</th><th>Sisa kartu</th><th style="text-align:right">Total kalah</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="controls">${canNext?'<button class="btn primary" data-act="next">Ronde berikutnya</button>':'<span class="wait">Nunggu host mulai ronde berikutnya…</span>'}
+        ${isOnline()?`<button class="btn" data-act="leave-room">${G.online.isHost?'Tutup room':'Keluar room'}</button>`:'<button class="btn" data-act="setup">Ganti pemain</button>'}</div>
+    </section>`;
+  }
   if(G.phase==='end'){
     const rows=G.players.map((q,i)=>{const r=(G.result&&G.result[i])||{},rem=(r.hand&&r.hand.length?r.hand:q.hand.filter(c=>c>=0));
       return `<tr><td><b>${esc(q.name)}</b>${i===G.lastWinner?' <span class="pill play">menang</span>':''}</td>
@@ -1395,7 +1472,7 @@ function zoneHTML(){
       <div class="zone-head"><h2>Kartu lu<small>${p.hand.length} kartu</small></h2>${sortSeg()}</div>
       ${timerHTML()}
       <div class="hand">${sortHand(p.hand,G.sortMode).map(c=>cardHTML(c,{must:c===G.must})).join('')}</div>
-      <div class="status" role="status">Giliran <b>${esc(t.name)}</b>. Tunggu bentar ya…</div>
+      <div class="status" role="status">${p.done&&lastMode()?`Lu udah habis, juara ${p.done}. Tonton yang lain ya. Giliran <b>${esc(t.name)}</b>.`:`Giliran <b>${esc(t.name)}</b>. Tunggu bentar ya…`}</div>
     </section>`;
   }
   const r=check(), pending=G.pending&&Date.now()-G.pending<4000;
@@ -1418,7 +1495,9 @@ function zoneHTML(){
     </div>
   </section>`;
 }
+let nudgeKey='';
 function render(){
+  if(G&&G.online&&G.phase==='turn'&&myTurn()){const k=G.round+':'+G.turn+':'+(G.log||[]).length;if(k!==nudgeKey){nudgeKey=k;SFX.nudge()}}
   let body;
   if(G&&G.phase&&G.phase!=='setup')body=seatsHTML()+boardHTML()+zoneHTML();
   else if(NET&&NET.meta&&NET.meta.status==='lobby')body=lobbyHTML();
@@ -1503,6 +1582,7 @@ else if(hashCode&&savedRoom()===hashCode){joinRoom(hashCode)}
 <script src="src/lore.js"></script>
 <script src="src/reactions.js"></script>
 <script src="src/comedy/config.js"></script>
+<script src="src/audio/director.js"></script>
 <script src="src/comedy/director.js"></script>
 <script src="src/comedy/memory.js"></script>
 <script src="src/comedy/bits.js"></script>

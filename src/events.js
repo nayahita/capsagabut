@@ -27,11 +27,15 @@
     comebackDeficit: 5,     // BIG_COMEBACK: winner was at least this many cards behind the leader at some point
     winStreakMin: 3,        // WIN_STREAK: consecutive round wins
     lossStreakMin: 4,       // LOSS_STREAK: consecutive round losses
-    upsetMinGap: 10,        // UPSET_WIN: winner was last on total points, at least this far behind first
+    upsetMinGap: 10,
+    upsetMinGapLosses: 2,   // same, when standings count losses ("main sampai satu kalah")        // UPSET_WIN: winner was last on total points, at least this far behind first
   }, window.CAPSA_EVENT_CONFIG || {});
 
   const handlers = {};
   const detectors = [];
+  // "main sampai satu kalah": only the last player holding cards lost; standings count losses (lower = better)
+  const lost = (d, i) => (d.mode === 'last' ? i === d.loser : i !== d.winner);
+  const stand = (d, arr) => (d.mode === 'last' ? (arr || []).map((x) => -x) : arr || []);
   const key = (n) => String(n == null ? '' : n).trim().toLowerCase();
 
   // Session memory (resets on 'game:start' or page reload).
@@ -86,7 +90,7 @@
     if (fact === 'round:end') {
       (d.names || []).forEach((nm, i) => {
         const k = key(nm), st = S.streak[k] || (S.streak[k] = { win: 0, loss: 0 });
-        if (i === d.winner) { st.win += 1; st.loss = 0; } else { st.loss += 1; st.win = 0; }
+        if (i === d.winner) { st.win += 1; st.loss = 0; } else if (lost(d, i)) { st.loss += 1; st.win = 0; } else { st.win = 0; st.loss = 0; }
       });
     }
   }
@@ -107,7 +111,7 @@
 
   defineDetector('round:end', (d, ctx, emit) => {
     d.names.forEach((nm, i) => {
-      if (i === d.winner) return;
+      if (!lost(d, i)) return;
       emit('PLAYER_LOSE', { seat: i, cardsLeft: d.counts[i], penalty: (d.penalties || [])[i] || 0, winnerName: d.names[d.winner] });
     });
   });
@@ -115,7 +119,7 @@
   defineDetector('round:end', (d, ctx, emit) => {
     d.names.forEach((nm, i) => {
       const left = d.counts[i];
-      if (i !== d.winner && left > 0 && left <= ctx.cfg.badBeatMaxCards) {
+      if (lost(d, i) && left > 0 && left <= ctx.cfg.badBeatMaxCards) {
         emit('BAD_BEAT', { seat: i, cardsLeft: left, winnerName: d.names[d.winner] });
       }
     });
@@ -131,16 +135,17 @@
     d.names.forEach((nm, i) => {
       const st = ctx.streakOf(nm);
       if (i === d.winner && st.win >= ctx.cfg.winStreakMin) emit('WIN_STREAK', { seat: i, streak: st.win });
-      if (i !== d.winner && st.loss >= ctx.cfg.lossStreakMin) emit('LOSS_STREAK', { seat: i, streak: st.loss });
+      if (lost(d, i) && st.loss >= ctx.cfg.lossStreakMin) emit('LOSS_STREAK', { seat: i, streak: st.loss });
     });
   });
 
   defineDetector('round:end', (d, ctx, emit) => {
-    const sb = d.scoresBefore || [];
+    const sb = stand(d, d.scoresBefore);
     if (d.names.length < 3 || (d.round || 0) < 2 || sb.length !== d.names.length) return;
     const mine = sb[d.winner], top = Math.max(...sb), bottom = Math.min(...sb);
     const alone = sb.filter((s) => s === bottom).length === 1;
-    if (mine === bottom && alone && top - mine >= ctx.cfg.upsetMinGap) emit('UPSET_WIN', { seat: d.winner, gap: top - mine });
+    const need = d.mode === 'last' ? ctx.cfg.upsetMinGapLosses : ctx.cfg.upsetMinGap;
+    if (mine === bottom && alone && top - mine >= need) emit('UPSET_WIN', { seat: d.winner, gap: top - mine, unit: d.mode === 'last' ? 'losses' : 'points' });
   });
 
   defineDetector('round:end', (d, ctx, emit) => {

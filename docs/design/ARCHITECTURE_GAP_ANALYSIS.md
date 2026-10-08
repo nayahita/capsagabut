@@ -144,3 +144,9 @@ Partially. Opportunities are only what a bit's `when()` recognises, so ordinary 
 2. P1 audio: audio director with buses, cue functions, scheduling, same-room routing.
 3. Content: Comedy Bible v2 bits on top of the above.
 4. P2 polish as playtests show the need.
+
+## Status after v12
+
+Done: retire trope SFX from automatic triggers (no loser sound, calmer "Rame" pack, Klasik default) · `duck` spares the countdown and your-turn cue · clutch gate · significance score · tests in the repo (`tests/`) · audio director with cue functions, tier cooldowns, exclusive comedy bus, seeded variants, same-room routing, scheduled start · stage-built-in sounds and credits routed through it · unused reaction WAVs no longer preloaded · Comedy Bible v2 bits.
+
+Still open: physical-setting detection beyond the room option (P1, manual for now) · telemetry view in Statistik (P2) · decay of reputation counters (P2) · confession ↔ mistake-kind matching (P2) · merge `stats.js` into lore (P2).

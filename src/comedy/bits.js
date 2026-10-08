@@ -19,7 +19,10 @@
   const RANK = (c) => c >> 2;
   const MIN = 60000;
   const used = (k) => window.CapsaComedy.state.usedKeys.has(k);
-  const losers = (d) => d.names.map((n, i) => ({ name: n, seat: i, left: d.counts[i], hand: (d.hands || [])[i] || [], pen: (d.penalties || [])[i] || 0 })).filter((x) => x.seat !== d.winner);
+  // who lost this round: everyone but the winner (old rule) or only the last player holding cards ("main sampai satu kalah")
+  const LAST = (d) => d && d.mode === 'last';
+  const losers = (d) => d.names.map((n, i) => ({ name: n, seat: i, left: d.counts[i], hand: (d.hands || [])[i] || [], pen: (d.penalties || [])[i] || 0 }))
+    .filter((x) => (LAST(d) ? x.seat === d.loser : x.seat !== d.winner));
   const seatOf = (B, name) => (B.names || []).findIndex((n) => key(n) === key(name));
 
   /* ============================== COMMON ============================== */
@@ -80,7 +83,8 @@
   add({ id: 'disetujui', mode: 'TAKING SIDES', rarity: 'COMMON', weight: 'micro', on: ['play'], chance: 0.25, cooldownMs: 60000,
     when: (B) => {
       const f = mem() && mem().favorite();
-      return f && f.key === key(B.d.name) && B.d.size >= 2 ? { sig: (B.d.cards || []).slice().sort((a, b) => a - b).join(',') } : false;
+      const mine = (f && f.key === mem().pidOf(B.d.name)) || mem().supported(B.d.name);
+      return mine && B.d.size >= 2 ? { sig: (B.d.cards || []).slice().sort((a, b) => a - b).join(',') } : false;
     },
     demo: { sig: '' },
     script: (v) => [{ do: 'wait', ms: 600 }, { do: 'sound', key: 'stamp', vol: 0.3 }, { do: 'approve', sig: v.sig }] });
@@ -95,7 +99,7 @@
 
   // 9. Faktor Kemenangan
   add({ id: 'faktor-kemenangan', mode: 'FAKE ANALYTICS · TAKING SIDES', rarity: 'UNCOMMON', on: ['round:end'], cooldownMs: 6 * MIN,
-    when: (B) => { const L = losers(B.d); return L.length && Math.min(...L.map((x) => x.left)) >= 6 ? { name: B.d.names[B.d.winner] } : false; },
+    when: (B) => { const L = losers(B.d); return L.length && Math.min(...L.map((x) => x.left)) >= (LAST(B.d) ? 9 : 6) ? { name: B.d.names[B.d.winner] } : false; },
     demo: { name: 'Ana' },
     script: (v) => [
       { do: 'wait', ms: 1100 }, { do: 'sound', key: 'notify' },
@@ -254,24 +258,26 @@
       for (const n of B.d.names) {
         const s = mem() ? mem().scoresOf(n) : [];
         if (s.length < 5) continue;
-        const t = s.slice(-5);
-        if (t.every((x, i) => i === 0 || x < t[i - 1]) && s[s.length - 1] <= -30) {
-          const from = Math.max(0, s.length - 10);
-          return { name: n, round: B.d.round, data: s.slice(from).map((val, i) => ({ label: 'R' + (from + i + 1), value: val })) };
-        }
+        const t = s.slice(-5), from = Math.max(0, s.length - 10);
+        const data = s.slice(from).map((val, i) => ({ label: 'R' + (from + i + 1), value: val }));
+        if (LAST(B.d)) {   // losses keep climbing: 4 of the last 5 rounds, and the most losses at the table
+          const ups = t.filter((x, i) => i > 0 && x > t[i - 1]).length, top = Math.max(...B.d.scoresAfter);
+          if (ups >= 3 && s[s.length - 1] === top && s[s.length - 1] >= 4) return { name: n, round: B.d.round, data, losses: true };
+        } else if (t.every((x, i) => i === 0 || x < t[i - 1]) && s[s.length - 1] <= -30) return { name: n, round: B.d.round, data };
       }
       return false;
     },
     demo: { name: 'Dodi', round: 6, data: [-2, -9, -14, -22, -31, -38].map((v, i) => ({ label: 'R' + (i + 1), value: v })) },
     script: (v) => [
       { do: 'wait', ms: 1100 }, { do: 'sound', key: 'notify' },
-      { do: 'chart', kind: 'line', title: `Kinerja ${v.name} · ronde 1–${v.round}`, data: v.data, note: 'Proyeksi: stabil.', noteAt: 1500, ms: 4500 },
+      { do: 'chart', kind: 'line', title: v.losses ? `Jumlah kalah ${v.name} · ronde 1–${v.round}` : `Kinerja ${v.name} · ronde 1–${v.round}`, data: v.data, note: v.losses ? 'Proyeksi: konsisten.' : 'Proyeksi: stabil.', noteAt: 1500, ms: 4500 },
     ] });
 
   // 24. Penyebab Kekalahan — blame the one person who did nothing.
   add({ id: 'penyebab', mode: 'TAKING SIDES · MISDIRECTION', rarity: 'RARE', on: ['round:end'], chance: 0.25, cooldownMs: 15 * MIN,
     when: (B) => {
       const d = B.d, r = mem() && mem().lastRound(); if (!r || d.names.length < 3) return false;
+      if (LAST(d)) return (d.order || []).length >= 3 && d.counts[d.loser] >= 4 ? { name: d.names[d.order[0]] } : false;
       const L = losers(d), worst = Math.max(...L.map((x) => x.pen)), beaten = r.beatBy[d.winner] || {};
       const z = L.filter((x) => x.pen < worst && !beaten[x.seat]).sort((a, b) => a.left - b.left)[0];
       return z ? { name: z.name } : false;
@@ -334,6 +340,11 @@
   add({ id: 'harapan', mode: 'GASLIGHTING · META · ANTI-CLIMAX', rarity: 'LEGENDARY', on: ['round:end'], oncePerMatch: true,
     when: (B) => {
       const sb = B.d.scoresBefore || [], w = B.d.winner;
+      if (LAST(B.d)) {   // the one with by far the most losses finishes first: show them at zero losses, briefly
+        const others = sb.filter((_, i) => i !== w);
+        if (!sb.length || sb[w] !== Math.max(...sb) || sb[w] - Math.min(...others) < 4) return false;
+        return { seat: w, value: 0, raw: true };
+      }
       if (!sb.length || sb[w] > -40 || sb[w] !== Math.min(...sb)) return false;
       const top = Math.max(...(B.d.scoresAfter || [0]));
       return { seat: w, value: top + 13 };
@@ -341,7 +352,7 @@
     demo: { seat: 3, value: 55 },
     script: (v) => [
       { do: 'wait', ms: 1600 }, { do: 'sound', key: 'kazoo' },
-      { do: 'scoreSwap', seat: v.seat, value: v.value, ms: 2000 },
+      { do: 'scoreSwap', seat: v.seat, value: v.value, raw: !!v.raw, ms: 2000 },
       { do: 'caption', text: 'Klasemen terbaru.', size: 's', ms: 2000, next: 2000 },
       { do: 'sound', key: 'glitch' }, { do: 'caption', text: 'Maaf. Itu harapan, bukan data.', size: 's', ms: 2500 },
     ] });
@@ -354,10 +365,10 @@
     script: (v) => [{ do: 'caption', size: 's', ms: 2400, text: `Durasi kejayaan ${v.victim}: ${v.secs} detik.` }] });
 
   add({ id: 'mental-health', mode: 'PSYCHOLOGICAL DAMAGE', rarity: 'UNCOMMON', on: ['round:end'], cooldownMs: 5 * MIN,
-    when: (B) => { const p = losers(B.d).find((x) => mem() && mem().streak(x.name).loss === 4); return p ? { name: p.name } : false; },
+    when: (B) => { const p = losers(B.d).find((x) => mem() && mem().streak(x.name).loss === 4); return p ? { name: p.name, last: LAST(B.d) } : false; },
     demo: { name: 'Budi' },
     script: (v) => [{ do: 'wait', ms: 1100 }, { do: 'sound', key: 'notify' },
-      { do: 'notify', app: 'Kesehatan Mental', title: `${v.name}, sudah 4 ronde tanpa menang`, body: 'Mau istirahat sebentar?', buttons: ['Tidak', 'Tidak'], ms: 6500 }] });
+      { do: 'notify', app: 'Kesehatan Mental', title: v.last ? `${v.name}, sudah 4 kali kalah berturut-turut` : `${v.name}, sudah 4 ronde tanpa menang`, body: 'Mau istirahat sebentar?', buttons: ['Tidak', 'Tidak'], ms: 6500 }] });
 
   add({ id: 'not-this-again', mode: 'CALLBACK', rarity: 'UNCOMMON', weight: 'micro', on: ['play'], chance: 0.85, cooldownMs: 3 * MIN,
     when: (B) => { const e = B.ev('MEM_THREAD_TENSE'); return e && e.times === 1 ? { origin: e.originRound } : false; },
@@ -395,10 +406,10 @@
     script: () => [{ do: 'sound', key: 'typing' }, { do: 'typing', ms: 3200 }] });
 
   add({ id: 'revenge-receipt', mode: 'REVENGE', rarity: 'UNCOMMON', on: ['round:end'], chance: 0.7, cooldownMs: 6 * MIN,
-    when: (B) => { const e = B.ev('MEM_GRUDGE_SETTLED'); return e ? { name: e.name, bully: e.bully, round: e.round, pen: e.pen } : false; },
+    when: (B) => { const e = B.ev('MEM_GRUDGE_SETTLED'); return e ? { name: e.name, bully: e.bully, round: e.round, pen: e.pen, cards: e.mode === 'last' ? e.cards : null } : false; },
     demo: { name: 'Budi', bully: 'Ana', round: 2, pen: 14 },
     script: (v) => [{ do: 'sound', key: 'register' },
-      { do: 'receipt', title: 'STRUK PELUNASAN', ms: 5200, next: 1900, lines: [[`Utang ronde ${v.round}`, `${v.pen} poin`], ['Bunga', 'harga diri'], ['Dibayar oleh', v.name], ['Diterima dari', v.bully]], total: ['STATUS', 'LUNAS'], foot: 'Simpan struk ini sebagai bukti.' },
+      { do: 'receipt', title: 'STRUK PELUNASAN', ms: 5200, next: 1900, lines: [[`Utang ronde ${v.round}`, v.cards != null ? `kalah, sisa ${v.cards} kartu` : `${v.pen} poin`], ['Bunga', 'harga diri'], ['Dibayar oleh', v.name], ['Diterima dari', v.bully]], total: ['STATUS', 'LUNAS'], foot: 'Simpan struk ini sebagai bukti.' },
       { do: 'sound', key: 'stamp' }, { do: 'stamp', text: 'LUNAS', ms: 1800 }] });
 
   // The old EZ sequence now alternates with "Mic Dibuka": half the time it plays right away, otherwise the setup waits.
@@ -452,11 +463,11 @@
         lines: [['Dijual', '13 kartu remi'], ['Kondisi', 'segel'], ['Pemilik', v.name], ['Alasan dijual', 'tidak sempat dipakai'], ['Harga', 'nego']], total: ['STATUS', 'TERSEDIA'] }] });
 
   add({ id: 'courtroom', mode: 'FAKE SERIOUSNESS · ESCALATION', rarity: 'LEGENDARY', on: ['round:end'], oncePerMatch: true,
-    when: (B) => { const e = B.ev('UPSET_WIN'); return e && e.gap >= 20 ? { name: e.name, gap: e.gap } : false; },
+    when: (B) => { const e = B.ev('UPSET_WIN'); return e && e.gap >= (e.unit === 'losses' ? 4 : 20) ? { name: e.name, gap: e.gap, unit: e.unit } : false; },
     demo: { name: 'Dodi', gap: 24 },
     script: (v) => [{ do: 'rarity', level: 'LEGENDARY' }, { do: 'freeze', ms: 9800 }, { do: 'sound', key: 'gavel' },
       { do: 'banner', text: 'SIDANG DIBUKA', ms: 2200 }, { do: 'caption', text: 'Terdakwa: klasemen.', size: 'm', ms: 1700 },
-      { do: 'caption', text: `Dakwaan: ketinggalan ${v.gap} poin. Dinyatakan tidak berlaku.`, size: 'm', ms: 2000 },
+      { do: 'caption', text: v.unit === 'losses' ? `Dakwaan: ${v.gap} kekalahan lebih banyak. Dinyatakan tidak berlaku.` : `Dakwaan: ketinggalan ${v.gap} poin. Dinyatakan tidak berlaku.`, size: 'm', ms: 2000 },
       { do: 'sound', key: 'gavel' }, { do: 'stamp', text: 'PUTUSAN', ms: 1400 },
       { do: 'caption', text: `${v.name} dinyatakan tidak sengaja jenius.`, size: 'l', ms: 2600 }] });
 
@@ -465,4 +476,134 @@
     script: () => [{ do: 'rarity', level: 'LEGENDARY' }, { do: 'sound', key: 'drumroll' }, { do: 'banner', text: 'KEJADIAN LANGKA TERDETEKSI', ms: 2300 },
       { do: 'wait', ms: 1400 }, { do: 'caption', text: 'Tidak ada yang terjadi.', size: 's', ms: 1700 }, { do: 'wait', ms: 500 },
       { do: 'caption', text: 'Sangat langka.', size: 's', ms: 1800 }] });
+
+  /* ============================== CONTENT PASS v2 ("Capsa Comedy Bible v2") ============================== */
+  const hhmm = (t) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}.${String(d.getMinutes()).padStart(2, '0')}`; };
+  const pk = (n) => (mem() && mem().pidOf ? mem().pidOf(n) : key(n));
+
+  // C5 Rapat Panjang — long think and/or cancelled picks, then a pass.
+  add({ id: 'rapat-panjang', mode: 'ANTI-CLIMAX · DEADPAN', rarity: 'COMMON', weight: 'micro', on: ['pass'], cooldownMs: 4 * MIN,
+    sig: { c: 2.6, vis: 0.6 },
+    when: (B) => { const e = B.ev('MEM_DITHER'); return e ? { seat: e.seat, secs: e.secs, cancels: e.cancels } : false; },
+    demo: { seat: 1, secs: 26, cancels: 0 },
+    script: (v) => [{ do: 'wait', ms: 800 }, { do: 'tag', seat: v.seat, ms: 3200,
+      text: v.cancels >= 3 ? `${v.cancels} revisi · hasil: pass` : `rapat ${v.secs} detik · hasil: pass` }] });
+
+  // A9+ Terbukti — showed the hand, then actually finished first.
+  add({ id: 'terbukti', mode: 'UNDERSTATEMENT', rarity: 'COMMON', weight: 'micro', on: ['round:end'],
+    when: (B) => { const e = B.evs('MEM_REVEAL_RESOLVED').find((x) => x.outcome === 'won'); return e ? { once: `terbukti:${pk(e.name)}`, seat: e.seat } : false; },
+    demo: { seat: 0 },
+    script: () => [{ do: 'wait', ms: 1100 }, { do: 'caption', text: 'Terbukti.', size: 's', ms: 1800 }] });
+
+  // C6- Tanpa Modal — weak dealt hand, finished first anyway.
+  add({ id: 'tanpa-modal', mode: 'UNDERSTATEMENT', rarity: 'COMMON', weight: 'micro', on: ['round:end'], cooldownMs: 6 * MIN,
+    sig: { c: 2.6, vis: 0.6 },
+    when: (B) => { const e = B.ev('MEM_UNDERDOG_HAND'); return e ? { name: e.name } : false; },
+    demo: { name: 'Cici' },
+    script: (v) => [{ do: 'wait', ms: 1100 }, { do: 'caption', text: `Kartu awal ${v.name}: di bawah rata-rata.`, size: 's', ms: 2200 },
+      { do: 'caption', text: 'Hasil: tidak relevan.', size: 's', ms: 1800 }] });
+
+  // G4 Kembali Online
+  add({ id: 'kembali-online', mode: 'DEADPAN', rarity: 'COMMON', weight: 'micro', on: ['player:rejoin'], cooldownMs: 5 * MIN,
+    when: (B) => { const e = B.ev('MEM_REJOIN'); return e && (e.awayMs || 0) >= 15000 ? { seat: e.seat, missed: e.missed || 0 } : false; },
+    demo: { seat: 2, missed: 4 },
+    script: (v) => [{ do: 'tag', seat: v.seat, ms: 3200, text: v.missed ? `kembali · melewatkan ${v.missed} kartu` : 'kembali' }] });
+
+  // G7 Nama Baru
+  add({ id: 'nama-baru', mode: 'DEADPAN', rarity: 'COMMON', weight: 'micro', on: ['round:start'], delay: 4000,
+    when: (B) => { const e = B.ev('MEM_RENAMED'); return e ? { once: `ren:${pk(e.name)}`, name: e.name, old: e.old } : false; },
+    demo: { name: 'Budii', old: 'Budi' },
+    script: (v) => [{ do: 'caption', text: `${v.name} (sebelumnya: ${v.old}). Catatan tetap berlaku.`, size: 's', ms: 2600 }] });
+
+  // A9 Kartu Terbuka — showed the hand to everyone, then lost.
+  add({ id: 'kartu-terbuka', mode: 'IRONY · CALLBACK', rarity: 'UNCOMMON', on: ['round:end'],
+    when: (B) => {
+      const e = B.evs('MEM_REVEAL_RESOLVED').find((x) => x.outcome === 'lost');
+      return e && (e.cards || []).length ? { once: `kt:${pk(e.name)}`, seat: e.seat, cards: e.cards.slice(0, 13) } : false;
+    },
+    demo: { seat: 3, cards: [3, 9, 14, 22, 30, 41, 51] },
+    script: (v) => [
+      { do: 'wait', ms: 1100 }, { do: 'spot', cards: v.cards, ms: 3000, next: 900 },
+      { do: 'sound', key: 'stamp' }, { do: 'stamp', text: 'DIPAMERKAN', ms: 1600, next: 1500 },
+      { do: 'caption', text: 'Transparansi tidak menjamin hasil.', size: 's', ms: 2400 },
+    ] });
+
+  // A5 Pengakuan Diterima — admitted a mistake in chat, then made one again.
+  add({ id: 'pengakuan-diterima', mode: 'IRONY · CALLBACK', rarity: 'UNCOMMON', on: ['play', 'pass', 'round:end'],
+    when: (B) => { const e = B.ev('MEM_REPEAT_MISTAKE'); return e ? { once: `pd:${pk(e.name)}`, name: e.name, quote: e.quote } : false; },
+    demo: { name: 'Dodi', quote: 'salah buang gua' },
+    script: (v) => [
+      { do: 'wait', ms: 700 }, { do: 'sound', key: 'notify' },
+      { do: 'notify', app: 'Capsa · Layanan Pelanggan', title: 'Pengakuan Anda tercatat:', body: `"${v.quote}"`, later: { text: 'Status: diulang.', at: 2000 }, ms: 5200 },
+      { do: 'wait', ms: 2000 }, { do: 'sound', key: 'typing', vol: 0.5 },
+    ] });
+
+  // C6 Modal Awal — strong dealt hand, lost holding plenty.
+  add({ id: 'modal-awal', mode: 'IRONY · FAKE ANALYTICS', rarity: 'UNCOMMON', on: ['round:end'], cooldownMs: 8 * MIN,
+    sig: { c: 4.2, vis: 0.6 },
+    when: (B) => { const e = B.ev('MEM_WASTED_HAND'); return e ? { name: e.name, twos: e.dealt.twos, high: e.dealt.high, left: e.left, quad: !!e.dealt.quad } : false; },
+    demo: { name: 'Budi', twos: 2, high: 4, left: 9, quad: false },
+    script: (v) => [
+      { do: 'wait', ms: 1100 }, { do: 'sound', key: 'register' },
+      { do: 'receipt', title: 'MODAL AWAL', ms: 5000, foot: v.name,
+        lines: [['Kartu 2', String(v.twos)], ['Kartu tinggi', String(v.high)], ...(v.quad ? [['Bom', '1']] : []), ['Sisa', `${v.left} kartu`]], total: ['KETERANGAN', 'tidak digunakan'] },
+    ] });
+
+  // A7 Emote Dikembalikan — laughing emote, then lost with plenty left.
+  add({ id: 'emote-dikembalikan', mode: 'IRONY · CALLBACK', rarity: 'UNCOMMON', weight: 'micro', on: ['round:end'], cooldownMs: 5 * MIN,
+    when: (B) => { const e = B.ev('MEM_EMOTE_BACKFIRE'); return e ? { seat: e.seat, e: e.emote } : false; },
+    demo: { seat: 1, e: 'laugh' },
+    script: (v) => [{ do: 'wait', ms: 1100 }, { do: 'emote', seat: v.seat, e: v.e, next: 1200 },
+      { do: 'caption', text: 'Emote dikembalikan ke pengirim.', size: 's', ms: 2000 }] });
+
+  // G2 Kebiasaan Baru — a long-standing opening habit, broken.
+  add({ id: 'kebiasaan-baru', mode: 'IRONY · PATTERN', rarity: 'UNCOMMON', weight: 'micro', on: ['play'],
+    sig: { depth: 2 },
+    when: (B) => { const e = B.ev('MEM_HABIT_BROKEN'); return e ? { once: `kb:${pk(e.name)}`, seat: e.seat, habit: e.habit, share: e.share } : false; },
+    demo: { seat: 2, habit: 'Pair', share: 78 },
+    script: (v) => [{ do: 'tag', seat: v.seat, text: `biasanya: ${v.habit} (${v.share}%)`, ms: 2000, next: 2000 },
+      { do: 'tag', seat: v.seat, text: 'sistem perlu waktu.', ms: 2600 }] });
+
+  // G1 Selamat Datang Kembali — the system remembers (one player per match, the heaviest recent moment wins).
+  add({ id: 'selamat-datang', mode: 'CALLBACK · DEADPAN', rarity: 'UNCOMMON', on: ['round:start'], oncePerMatch: true, delay: 4000,
+    sig: { depth: 2 },
+    when: (B) => {
+      const es = B.evs('MEM_RETURNING'); if (!es.length) return false;
+      const e = es.slice().sort((a, b) => ((b.moment || {}).w || 0) - ((a.moment || {}).w || 0) || b.matches - a.matches)[0];
+      return { seat: e.seat, name: e.name, title: e.title, moment: e.moment && e.moment.bad ? e.moment.text : null };
+    },
+    demo: { seat: 1, name: 'Budi', title: 'Spesialis Nyaris', moment: 'kalah, sisa 1 kartu (9♣)' },
+    script: (v) => [{ do: 'sound', key: 'notify' },
+      { do: 'notify', app: 'Capsa', title: `Selamat datang kembali, ${v.name}.`, body: `Gelar: ${v.title}.`, ms: 5200,
+        ...(v.moment ? { later: { text: `Kami belum lupa: ${v.moment}.`, at: 2000 } } : {}) }] });
+
+  // F5 Rivalitas Resmi — a long, close head-to-head across matches.
+  add({ id: 'rivalitas-resmi', mode: 'CALLBACK · EXAGGERATION', rarity: 'RARE', on: ['round:end'], chance: 0.6,
+    sig: { depth: 2 },
+    when: (B) => { const e = B.ev('MEM_RIVALRY'); return e ? { once: `riv:${[pk(e.name), pk(e.rival)].sort().join('|')}`, a: e.name, b: e.rival, x: e.wins, y: e.losses } : false; },
+    demo: { a: 'Ana', b: 'Budi', x: 7, y: 6 },
+    script: (v) => [
+      { do: 'wait', ms: 1100 }, { do: 'sound', key: 'heartbeat', vol: 0.6 },
+      { do: 'poster', title: 'SKOR SEPANJANG MASA', name: `${v.a} ${v.x} – ${v.y} ${v.b}`, sub: 'Rivalitas resmi', reward: 'Hadiah: gengsi', foot: 'Dicatat oleh room ini.', ms: 4200, next: 4400 },
+      { do: 'sound', key: 'tapeStop' }, { do: 'caption', text: 'Babak berikutnya: sekarang.', size: 's', ms: 2000 },
+    ] });
+
+  // G3 Kejadian Serupa — yesterday's embarrassment, again (inside the 24 h window).
+  add({ id: 'kejadian-serupa', mode: 'CALLBACK', rarity: 'RARE', on: ['round:end', 'pass'], chance: 0.8,
+    sig: { depth: 2 },
+    when: (B) => {
+      const e = B.ev('MEM_DEJA_VU'); if (!e) return false;
+      return { once: `dv:${pk(e.name)}:${new Date().toDateString()}`, name: e.name, then: e.then, now: e.now };
+    },
+    demo: { name: 'Budi', then: { t: Date.now() - 20 * 3600e3, text: 'kalah, sisa 1 kartu (9♣)' }, now: 'kalah, sisa 1 kartu (4♦)' },
+    script: (v) => [{ do: 'wait', ms: 1100 },
+      { do: 'archive', title: `KEJADIAN SERUPA · ${v.name}`, lines: [`${hhmm(v.then.t)} kemarin · ${v.then.text}`, `sekarang · ${v.now}`], stamp: 'BERLANJUT', ms: 5200 }] });
+
+  // Sistem Ikut Prihatin — someone is really going under: the system switches to their side (the only bit allowed to touch them).
+  add({ id: 'sistem-prihatin', mode: 'TAKING SIDES', rarity: 'RARE', on: ['round:end'], oncePerMatch: true, kind: 'support', chance: 0.9,
+    when: (B) => { const e = B.ev('MEM_SPIRAL'); return e ? { seat: e.seat, name: e.name } : false; },
+    onPerform: (v) => { if (mem() && mem().support) mem().support(v.name); },
+    demo: { seat: 1, name: 'Budi' },
+    script: (v) => [{ do: 'wait', ms: 1300 }, { do: 'sound', key: 'notify' },
+      { do: 'notify', app: 'Capsa · Kebijakan', title: 'Pembaruan kebijakan', body: `Mulai ronde ini, sistem mendukung ${v.name} sampai kondisinya membaik.`, ms: 5200 }] });
 })();

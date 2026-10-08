@@ -186,7 +186,8 @@
       src.buffer = b; g.gain.value = S.volume; src.connect(g).connect(o.out || o.ctx.destination); src.start();
     });
   }
-  function preload() { Object.keys(C.sounds || {}).forEach(load); }
+  // nothing to load while the Comedy Director has replaced the cards (only the Statistik test chips use these)
+  function preload() { if (S.enabled === false) return; Object.keys(C.sounds || {}).forEach(load); }
 
   /* ---------- styles ---------- */
   const css = document.createElement('style');

@@ -26,7 +26,7 @@
 
   /* one "moment" per fact: everything emitted while that fact is processed lands in it */
   let cur = null;
-  ['game:start', 'round:start', 'play', 'pass', 'skip', 'chat', 'emote', 'reveal', 'player:rejoin', 'round:end'].forEach((f) => {
+  ['game:start', 'round:start', 'play', 'pass', 'skip', 'finish', 'chat', 'emote', 'reveal', 'player:rejoin', 'round:end'].forEach((f) => {
     E.on('fact:' + f, (d) => { const m = { fact: f, d: d || {}, sig: [] }; cur = m; setTimeout(() => evaluate(m), 0); });
   });
   E.on('*', (ev) => { if (cur) cur.sig.push(ev); });
@@ -44,6 +44,40 @@
     const v = c.v || {}, mem = B.mem; if (!mem) return null;
     const n = v.seat != null && B.names[v.seat] != null ? B.names[v.seat] : v.name;
     return n == null ? null : mem.pidOf ? mem.pidOf(n) : mem.key(n);
+  }
+  /*
+   * Tension: is the table in a moment the system must not interrupt?
+   * Clutch = two players still in the round sit on ≤2 cards, or the player to move has ≤10 s left.
+   * During clutch only micro bits may play; stage bits wait for a calmer moment (or the round end).
+   */
+  const MID = ['play', 'pass', 'skip', 'finish', 'chat', 'emote', 'reveal', 'player:rejoin'];
+  function clutch(B) {
+    if (!MID.includes(B.fact)) return false;
+    const v = window.CapsaFX && window.CapsaFX.view ? window.CapsaFX.view() : null;
+    if (v && v.left != null && v.left <= 10000) return true;
+    const counts = (B.d && Array.isArray(B.d.counts) && B.d.counts) || (v && v.counts) || [];
+    return counts.filter((c) => c > 0 && c <= 2).length >= 2;
+  }
+  /*
+   * Significance = contradiction × visibility × memory depth × freshness. Must reach the bar for its size.
+   * A bit may declare sig: { c, vis, depth } (or a function of its values) — defaults keep a fresh bit just above the bar,
+   * so freshness (same target lately, rerun within 24 h, same mechanism within 3 min) is what usually decides.
+   */
+  const BAR = { micro: 1.5, stage: 2.5, legendary: 3.5 };
+  function significance(c, B, now) {
+    const bit = c.bit, legend = bit.rarity === 'LEGENDARY', size = legend ? 'legendary' : weightOf(bit);
+    let base = {}; try { base = typeof bit.sig === 'function' ? bit.sig(c.v, B) || {} : bit.sig || {}; } catch (e) {}
+    const C = base.c != null ? base.c : BAR[size], vis = base.vis != null ? base.vis : 1;
+    const depth = base.depth != null ? base.depth : (PAYOFF.test(bit.mode) ? 1.5 : 1);
+    let fresh = 1;
+    if (c.target && !legend) {
+      const r = curRound(B), hits = st.targets.filter((x) => x.k === c.target && r - x.round < FATIGUE.rounds).length;
+      fresh *= Math.max(0, 1 - 0.3 * hits);
+      const L = window.CapsaLore;
+      if (L && L.ledgerFor && L.ledgerFor(c.target).some((x) => x.id === bit.id)) fresh *= 0.4;
+    }
+    if (!legend && now - (st.modeLast[bit.mode] || -1e12) < 180000) fresh *= 0.5;
+    return { score: C * vis * depth * fresh, need: BAR[size] };
   }
   const authority = () => { const fx = window.CapsaFX; return !fx || !fx.view || fx.view().authority; };
   const heat = (now) => { st.recent = st.recent.filter((t) => now - t < S.heatWindowMs); return 1 / (1 + S.heatPerPerformance * st.recent.length); };
@@ -79,6 +113,10 @@
       }
       if (c.target && B.mem && B.mem.spiral && B.mem.spiral(c.target) && !bit.kind) { log('skip (spiral)', bit.id); continue; }
       if (weightOf(bit) === 'micro' && B.mem && B.mem.tableHot && B.mem.tableHot()) { log('skip (table is busy)', bit.id); continue; }
+      if (weightOf(bit) === 'stage' && bit.rarity !== 'LEGENDARY' && clutch(B)) { log('skip (clutch)', bit.id); continue; }
+      const sg = significance(c, B, now);
+      if (sg.score < sg.need) { log(`skip (significance ${sg.score.toFixed(2)} < ${sg.need})`, bit.id); continue; }
+      c.sig = sg.score;
       cands.push(c);
     }
     // Effective chance first, then order: payoffs of memory (callbacks, revenge) first, then rarer bits,
@@ -88,11 +126,7 @@
       let p = c.bit.chance != null ? c.bit.chance : (S.chance[r] != null ? S.chance[r] : 0.2);
       if (r !== 'LEGENDARY') {
         p *= heat(now) * boredom() * fbMul();
-        // the same bit on the same player within a day (across matches) is a rerun
-        const L = window.CapsaLore;
-        if (c.target && L && L.ledgerFor && L.ledgerFor(c.target).some((x) => x.id === c.bit.id)) p *= 0.4;
         if (PAYOFF.test(c.bit.mode)) p *= S.callbackBoost;
-        if (now - (st.modeLast[c.bit.mode] || -1e12) < 60000) p *= S.sameModePenalty;
         p = Math.min(p, S.maxChance);
       }
       c.p = p;
@@ -134,6 +168,7 @@
       const w = weightOf(c.bit);
       st.lastW[w] = now + perf.delay; st.recent.push(now); st.perRound[w]++; st.bitLast[c.bit.id] = now; st.modeLast[c.bit.mode] = now;
       st.lastPerf = now + perf.delay;
+      if (c.bit.onPerform) { try { c.bit.onPerform(c.v, B); } catch (e) { log('onPerform error', c.bit.id, e.message); } }
       if (c.target) st.targets.push({ k: c.target, round: curRound(B) });
       if (window.CapsaLore && window.CapsaLore.ledger) window.CapsaLore.ledger({ id: c.bit.id, pid: c.target && /^p_/.test(c.target) ? c.target : null });
       if (c.bit.oncePerMatch) st.used.add(c.bit.id);
@@ -143,6 +178,8 @@
       if (perf.steps.some((s) => s.do === 'freeze' || s.block) && window.CapsaFX) window.CapsaFX.holdTimer(perf.delay + total + 600);
       log('PLAY', perf.id);
     }
+    // online: give every phone 600 ms to receive it, then all start together
+    if (!local && window.CapsaFX && window.CapsaFX.view && window.CapsaFX.view().online && window.CapsaFX.serverNow) perf.at = window.CapsaFX.serverNow() + 600;
     if (!local && window.CapsaFX && window.CapsaFX.broadcast) window.CapsaFX.broadcast('comedy', perf);
     else document.dispatchEvent(new CustomEvent('capsa:mod', { detail: { type: 'comedy', data: perf } }));
     return perf;

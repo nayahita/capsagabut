@@ -49,7 +49,7 @@
     M = { startedAt: Date.now(), names: names || [], rounds: [], moments: [], threads: [], chats: [], grudges: [], bounty: null,
       streak: {}, wins: {}, penalty: {}, mistakes: {}, bombs: 0, sflush: 0, twosDied: 0, ezLosses: 0,
       favorite: null, scores: {}, leads: {}, pokes: {}, setups: [], twosDiedBy: {}, lastCardBy: {},
-      think: {}, passStats: {}, emotes: [], hot: [], confess: {}, spiral: {}, h2h: {}, debts: [], once: {}, pids: [] };
+      think: {}, passStats: {}, losses: {}, supported: {}, emotes: [], hot: [], confess: {}, spiral: {}, h2h: {}, debts: [], once: {}, pids: [] };
     R = null; last = null;
   }
   newMatch([]);
@@ -61,7 +61,16 @@
       revealed: {}, emoted: {}, cancels: Array(n).fill(0) };
   }
   const ensureR = (d) => { if (!R) { R = freshRound(d); R.partial = true; } };
-  const moment = (round, name, text, w, bad) => { M.moments.push({ round, name, key: key(name), text, w, bad: !!bad, t: Date.now() }); if (M.moments.length > 80) M.moments.shift(); };
+  const moment = (round, name, text, w, bad, type) => {
+    const m = { round, name, key: key(name), text, w, bad: !!bad, t: Date.now(), type: type || null };
+    M.moments.push(m); if (M.moments.length > 80) M.moments.shift();
+    // the same kind of embarrassment as in an earlier match, inside the 24 h roast window
+    if (bad && type && usesLore(m.key) && once('deja:' + m.key)) {
+      const prev = Lore().quotable(m.key).filter((x) => x.bad && x.type === type && x.t < M.startedAt).pop();
+      if (prev) { const seat = names().findIndex((x) => key(x) === m.key); sig('MEM_DEJA_VU', { seat, name, kind: type, then: { t: prev.t, text: prev.text, round: prev.round }, now: text, round }); }
+      else delete M.once['deja:' + m.key];
+    }
+  };
   const once = (k) => { if (M.once[k]) return false; M.once[k] = true; return true; };
   const hotPing = () => { const now = Date.now(); M.hot = M.hot.filter((t) => now - t < HOT_MS); M.hot.push(now); };
   const tableHot = () => { const now = Date.now(); return M.hot.filter((t) => now - t < HOT_MS).length >= HOT_N; };
@@ -99,6 +108,10 @@
       const q = Lore().quotable(k).slice(-1)[0] || null;
       sig('MEM_RETURNING', { seat: i, name: n, matches: ds.matches, title: title(n), moment: q });
     });
+    if ((d.round || 0) === 1 && Lore() && Lore().renamed) {
+      const rn = Lore().renamed();
+      (d.names || []).forEach((n, i) => { const k = key(n), r = rn[k]; if (r && once('ren:' + k)) sig('MEM_RENAMED', { seat: i, name: n, old: r.from }); });
+    }
     M.threads.forEach((t) => { if (t.state === 'tense') t.state = 'open'; });
     M.setups = M.setups.filter((s) => (d.round || 0) - s.round <= SETUP_ROUNDS);
     if (d.starter != null) leadTurn(d.starter);
@@ -152,7 +165,7 @@
     R.passes[me] = (R.passes[me] || 0) + 1;
     R.prevAction = { type: 'pass', seat: me, hadPlay: !!d.hadPlay };
     const ps = turnStat(d.name, d);
-    if (d.timeout) { R.timeouts[me]++; repBump(d.name, 'timeouts'); moment(R.n, d.name, 'timeout', 5, true); mistake(me, d.name, 'timeout'); }
+    if (d.timeout) { R.timeouts[me]++; repBump(d.name, 'timeouts'); moment(R.n, d.name, 'timeout', 5, true, 'timeout'); mistake(me, d.name, 'timeout'); }
     if (d.hadPlay) {
       R.passPlayable[me]++; ps.playable++; bump(M.mistakes, d.name); repBump(d.name, 'passivePasses');
       if (R.passPlayable[me] === 3) sig('MEM_PASSIVE', { seat: me, name: d.name, count: 3 });
@@ -195,12 +208,17 @@
     R.revealed[d.seat] = { t: Date.now(), count: d.count, cards: d.cards || [] };
     if (first) sig('MEM_REVEAL', { seat: d.seat, name: d.name, count: d.count, cards: d.cards || [] });
   });
-  E.on('fact:player:leave', (d) => { if (R) (R.away = R.away || {})[d.seat] = Date.now(); });
-  E.on('fact:player:rejoin', (d) => { sig('MEM_REJOIN', { seat: d.seat, name: d.name, awayMs: d.awayMs, plays: R ? R.plays : 0 }); });
+  E.on('fact:player:leave', (d) => { if (R) (R.away = R.away || {})[d.seat] = R.plays; });
+  E.on('fact:player:rejoin', (d) => {
+    const at = R && R.away ? R.away[d.seat] : null;
+    sig('MEM_REJOIN', { seat: d.seat, name: d.name, awayMs: d.awayMs, missed: R && at != null ? Math.max(0, R.plays - at) : 0 });
+  });
 
   E.on('fact:round:end', (d) => {
     ensureR(d);
     const nm = d.names || [], w = d.winner, wName = nm[w], now = Date.now();
+    // "main sampai satu kalah": only the last one holding cards lost; standings count losses (lower = better)
+    const LM = d.mode === 'last', lost = (i) => (LM ? i === d.loser : i !== w), stand = (a) => (LM ? (a || []).map((x) => -x) : a || []);
     if (!M.names.length) M.names = nm;
     const before = {};
     nm.forEach((n) => { before[key(n)] = Object.assign({}, M.streak[key(n)] || { win: 0, loss: 0 }); });
@@ -208,13 +226,13 @@
     const row = { round: d.round, winner: w, winnerName: wName, how: d.how, names: nm, counts: d.counts, hands: d.hands || [],
       penalties: d.penalties || [], scoresBefore: d.scoresBefore, scoresAfter: d.scoresAfter, final: d.final,
       min: R.min.slice(), passes: R.passes.slice(), passPlayable: R.passPlayable.slice(), partial: !!R.partial,
-      beatBy: Object.assign({}, R.beatBy), enabler };
+      beatBy: Object.assign({}, R.beatBy), enabler, mode: d.mode || 'points', loser: d.loser, order: d.order || null };
     const prevRow = last;
     M.rounds.push(row); last = row;
 
     nm.forEach((n, i) => {
       const k = key(n), s = M.streak[k] || (M.streak[k] = { win: 0, loss: 0 });
-      if (i === w) { s.win++; s.loss = 0; M.wins[k] = (M.wins[k] || 0) + 1; } else { s.loss++; s.win = 0; }
+      if (i === w) { s.win++; s.loss = 0; M.wins[k] = (M.wins[k] || 0) + 1; } else if (lost(i)) { s.loss++; s.win = 0; M.losses[k] = (M.losses[k] || 0) + 1; } else { s.win = 0; s.loss = 0; }
       M.penalty[k] = (M.penalty[k] || 0) + (row.penalties[i] || 0);
       (M.scores[k] = M.scores[k] || []).push((d.scoresAfter || [])[i] || 0);
     });
@@ -230,6 +248,7 @@
     nm.forEach((n, i) => {
       repBump(n, 'rounds');
       if (i === w) { repBump(n, 'wins'); if (d.how === 'bomb') repBump(n, 'bombWins'); return; }
+      if (!lost(i)) return;
       const left = d.counts[i], hand = row.hands[i] || [];
       if (left === 1) {
         repBump(n, 'lastCardLosses');
@@ -241,10 +260,10 @@
       if (twos.length) twosDiedNow.push({ i, n });
       if (twos.length >= 2) { repBump(n, 'hoards'); M.twosDied += twos.length; M.twosDiedBy[key(n)] = (M.twosDiedBy[key(n)] || 0) + 1; }
       if (twos.length && R.passPlayable[i] > 0) addSetup({ type: 'prasasti', name: n, round: d.round, cards: twos });
-      if (twos.length >= 2) moment(d.round, n, `mati megang ${twos.map(label).join(' ')}`, 5, true);
+      if (twos.length >= 2) moment(d.round, n, `mati megang ${twos.map(label).join(' ')}`, 5, true, 'hoard');
       const q = quadRank(hand);
-      if (q >= 0) { repBump(n, 'bombDeaths'); addSetup({ type: 'prasasti', name: n, round: d.round, cards: hand.filter((c) => RANK(c) === q), bomb: true }); moment(d.round, n, 'mati megang Four of a Kind', 5, true); }
-      if (left === 13) { repBump(n, 'sealed'); moment(d.round, n, 'selesai masih pegang 13 kartu', 9, true); }
+      if (q >= 0) { repBump(n, 'bombDeaths'); addSetup({ type: 'prasasti', name: n, round: d.round, cards: hand.filter((c) => RANK(c) === q), bomb: true }); moment(d.round, n, 'mati megang Four of a Kind', 5, true, 'bombDeath'); }
+      if (left === 13) { repBump(n, 'sealed'); moment(d.round, n, 'selesai masih pegang 13 kartu', 9, true, 'sealed'); }
       repMax(n, 'worstLossStreak', M.streak[key(n)].loss);
     });
 
@@ -252,17 +271,17 @@
     M.threads.filter((t) => t.type === 'lastCard' && t.state === 'tense').forEach((t) => {
       const i = nm.findIndex((x) => key(x) === t.key);
       if (i < 0) return;
-      const outcome = i === w ? 'won' : 'lost';
+      const outcome = lost(i) ? 'lost' : 'won';
       sig('MEM_THREAD_RESOLVED', { seat: i, name: nm[i], outcome, originRound: t.round, times: t.times });
       if (outcome === 'won') { t.state = 'closed'; moment(d.round, nm[i], 'akhirnya menang di situasi kartu terakhir', 4); }
-      else { t.state = 'open'; t.times = (t.times || 1) + 1; t.lastRound = d.round; moment(d.round, nm[i], `kalah di kartu terakhir (lagi, ke-${t.times})`, 7, true); }
+      else { t.state = 'open'; t.times = (t.times || 1) + 1; t.lastRound = d.round; moment(d.round, nm[i], `kalah di kartu terakhir (lagi, ke-${t.times})`, 7, true, 'lastCard'); }
     });
     nm.forEach((n, i) => {
-      if (i === w || d.counts[i] !== 1) return;
+      if (!lost(i) || d.counts[i] !== 1) return;
       if (!M.threads.some((t) => t.type === 'lastCard' && t.key === key(n) && t.state !== 'closed')) {
         M.threads.push({ type: 'lastCard', key: key(n), name: n, round: d.round, state: 'open', times: 1 });
         const card = (row.hands[i] || [])[0];
-        moment(d.round, n, `kalah, sisa 1 kartu${card != null ? ` (${label(card)})` : ''}`, 5, true);
+        moment(d.round, n, `kalah, sisa 1 kartu${card != null ? ` (${label(card)})` : ''}`, 5, true, 'lastCard');
       }
     });
 
@@ -272,10 +291,10 @@
     Object.values(said).forEach((c) => {
       const i = nm.findIndex((x) => key(x) === c.key);
       if (i < 0) return;
-      M.chats.forEach((o) => { if (o.key === c.key && o.trash) { o.resolved = true; if (i !== w) o.lost = true; } });
-      const outcome = i === w ? 'won' : 'lost';
+      M.chats.forEach((o) => { if (o.key === c.key && o.trash) { o.resolved = true; if (lost(i)) o.lost = true; } });
+      const outcome = i === w ? 'won' : lost(i) ? 'lost' : 'mid';
       if (outcome === 'lost') {
-        M.ezLosses++; repBump(nm[i], 'ezLosses'); moment(d.round, nm[i], `"${c.text}"`, 8, true);
+        M.ezLosses++; repBump(nm[i], 'ezLosses'); moment(d.round, nm[i], `"${c.text}"`, 8, true, 'boastLost');
         addSetup({ type: 'ezLost', name: nm[i], round: d.round, text: c.text, cardsLeft: d.counts[i] });
       }
       sig('MEM_EZ_RESOLVED', { seat: i, name: nm[i], text: c.text, outcome, prediction: c.prediction, cardsLeft: d.counts[i], secs: Math.max(1, Math.round((now - c.t) / 1000)) });
@@ -286,14 +305,14 @@
       if (key(wName) !== g.victimKey) return true;
       const bi = nm.findIndex((x) => key(x) === g.bullyKey);
       if (bi < 0 || bi === w) return true;
-      sig('MEM_GRUDGE_SETTLED', { seat: w, name: wName, bully: nm[bi], bullySeat: bi, round: g.round, pen: g.pen });
+      sig('MEM_GRUDGE_SETTLED', { seat: w, name: wName, bully: nm[bi], bullySeat: bi, round: g.round, pen: g.pen, cards: g.cards, mode: g.mode });
       repBump(wName, 'revenges'); moment(d.round, wName, `bales dendam ke ${nm[bi]} (utang ronde ${g.round})`, 6);
       return false;
     });
     nm.forEach((n, i) => {
       const pen = row.penalties[i] || 0;
-      if (i !== w && pen >= 10 && !M.grudges.some((g) => g.victimKey === key(n) && g.bullyKey === key(wName))) {
-        M.grudges.push({ victimKey: key(n), victim: n, bullyKey: key(wName), bully: wName, round: d.round, pen });
+      if (lost(i) && pen >= 10 && !M.grudges.some((g) => g.victimKey === key(n) && g.bullyKey === key(wName))) {
+        M.grudges.push({ victimKey: key(n), victim: n, bullyKey: key(wName), bully: wName, round: d.round, pen, cards: d.counts[i], mode: d.mode || 'points' });
       }
     });
 
@@ -312,7 +331,7 @@
 
     // the system's favorite: lowest score after the first round; replaced after 3 losses in a row
     if (!M.favorite && Array.isArray(d.scoresAfter) && d.scoresAfter.length) {
-      const lo = Math.min(...d.scoresAfter), i = d.scoresAfter.indexOf(lo);
+      const st = stand(d.scoresAfter), lo = Math.min(...st), i = st.indexOf(lo);
       M.favorite = { key: key(nm[i]), name: nm[i], since: d.round };
       sig('MEM_FAVORITE_SET', { seat: i, name: nm[i] });
     } else if (M.favorite) {
@@ -337,22 +356,22 @@
     // dealt hand vs result
     if (Array.isArray(d.dealt)) nm.forEach((n, i) => {
       const h = d.dealt[i]; if (!h) return;
-      if (i !== w && (h.score >= 62 || h.twos >= 2 || h.quad) && d.counts[i] >= 6) sig('MEM_WASTED_HAND', { seat: i, name: n, dealt: h, left: d.counts[i] });
+      if (lost(i) && (h.score >= 62 || h.twos >= 2 || h.quad) && d.counts[i] >= 6) sig('MEM_WASTED_HAND', { seat: i, name: n, dealt: h, left: d.counts[i] });
       if (i === w && h.score <= 35 && !h.twos && !h.quad) sig('MEM_UNDERDOG_HAND', { seat: i, name: n, dealt: h });
     });
     // shown cards, laughing emotes: did it age well?
     Object.entries(R.revealed || {}).forEach(([s, r]) => {
-      const i = +s, outcome = i === w ? 'won' : 'lost';
-      if (outcome === 'lost') { moment(d.round, nm[i], 'pamer kartu, terus kalah', 7, true); addSetup({ type: 'revealLost', name: nm[i], round: d.round, cards: r.cards, cardsLeft: d.counts[i] }); }
+      const i = +s, outcome = i === w ? 'won' : lost(i) ? 'lost' : 'mid';
+      if (outcome === 'lost') { moment(d.round, nm[i], 'pamer kartu, terus kalah', 7, true, 'revealLost'); addSetup({ type: 'revealLost', name: nm[i], round: d.round, cards: r.cards, cardsLeft: d.counts[i] }); }
       sig('MEM_REVEAL_RESOLVED', { seat: i, name: nm[i], outcome, cards: r.cards, cardsLeft: d.counts[i], secs: Math.max(1, Math.round((now - r.t) / 1000)) });
     });
     Object.entries(R.emoted || {}).forEach(([s, e]) => {
-      const i = +s; if (i === w || !['laugh', 'cool'].includes(e) || d.counts[i] < 5) return;
+      const i = +s; if (!lost(i) || !['laugh', 'cool'].includes(e) || d.counts[i] < 5) return;
       sig('MEM_EMOTE_BACKFIRE', { seat: i, name: nm[i], emote: e, cardsLeft: d.counts[i] });
     });
     // head-to-head, this match (added to the lore at match:end)
-    nm.forEach((n, i) => { if (i === w) return; const kk = [key(wName), key(n)].sort().join('|'); const h = M.h2h[kk] = M.h2h[kk] || {}; h[key(wName)] = (h[key(wName)] || 0) + 1; });
-    const big = nm.map((n, i) => ({ n, i, pen: row.penalties[i] || 0 })).filter((x) => x.i !== w).sort((a, b) => b.pen - a.pen)[0];
+    nm.forEach((n, i) => { if (!lost(i)) return; const kk = [key(wName), key(n)].sort().join('|'); const h = M.h2h[kk] = M.h2h[kk] || {}; h[key(wName)] = (h[key(wName)] || 0) + 1; });
+    const big = nm.map((n, i) => ({ n, i, pen: row.penalties[i] || 0 })).filter((x) => lost(x.i)).sort((a, b) => b.pen - a.pen)[0];
     if (big) {
       if (big.pen >= 10) M.debts.push({ by: key(wName), victim: key(big.n), pen: big.pen, t: now });
       const a = key(wName), b = key(big.n), kk = [a, b].sort().join('|');
@@ -363,10 +382,11 @@
     }
     // somebody is really going under: the director stops piling on
     nm.forEach((n, i) => {
-      const k = key(n), sa = d.scoresAfter || [];
+      const k = key(n), sa = stand(d.scoresAfter);
       if (i === w) { delete M.spiral[k]; return; }
       const others = sa.filter((_, j) => j !== i), next = others.length ? Math.min(...others) : 0;
-      if ((M.streak[k] || {}).loss >= 5 && sa[i] === Math.min(...sa) && next - sa[i] >= 20 && !M.spiral[k]) {
+      const needLoss = LM ? 3 : 5, needGap = LM ? 3 : 20;
+      if ((M.streak[k] || {}).loss >= needLoss && sa[i] === Math.min(...sa) && next - sa[i] >= needGap && !M.spiral[k]) {
         M.spiral[k] = true; sig('MEM_SPIRAL', { seat: i, name: n, loss: M.streak[k].loss, gap: next - sa[i] });
       }
     });
@@ -384,7 +404,7 @@
     const legends = M.chats.filter((c) => c.trash && c.lost && /^p_/.test(c.key)).map((c) => ({ pid: c.key, name: c.name, text: c.text, t: c.t }));
     Lore().commitMatch({
       pids: pids.filter((p) => /^p_/.test(p)), names, rounds: M.rounds.length,
-      moments: M.moments.filter((m) => /^p_/.test(m.key) && m.w >= 5).map((m) => ({ pid: m.key, round: m.round, text: m.text, w: m.w, bad: m.bad, t: m.t })),
+      moments: M.moments.filter((m) => /^p_/.test(m.key) && m.w >= 5).map((m) => ({ pid: m.key, round: m.round, text: m.text, w: m.w, bad: m.bad, t: m.t, type: m.type })),
       legends, leads, passes: only(M.passStats), think: only(M.think),
       h2h: Object.fromEntries(Object.entries(M.h2h).filter(([k]) => k.split('|').every((x) => /^p_/.test(x)))),
       debts: M.debts.filter((x) => /^p_/.test(x.by) && /^p_/.test(x.victim)),
@@ -425,9 +445,10 @@
     const ez = M.moments.filter((m) => m.bad && m.text.startsWith('"')).pop();
     if (ez) out.push({ kind: 'trash', name: ez.name, text: ez.text });
     if (nm.length) {
-      const scoreOf = (n) => { const s = M.scores[key(n)] || []; return s.length ? s[s.length - 1] : 0; };
+      const LMm = last && last.mode === 'last';
+      const scoreOf = (n) => { const s = M.scores[key(n)] || []; const v = s.length ? s[s.length - 1] : 0; return LMm ? -v : v; };
       const worst = [...nm].sort((a, b) => scoreOf(a) - scoreOf(b))[0];
-      out.push({ kind: 'worst', name: worst, score: scoreOf(worst) });
+      out.push({ kind: 'worst', name: worst, score: LMm ? -scoreOf(worst) : scoreOf(worst), unit: LMm ? 'losses' : 'points' });
     }
     return out;
   }
@@ -437,6 +458,8 @@
     rep: (n) => repOf(key(n)),
     title, titleOf, target, hasQuad, habit, lore,
     spiral: (n) => !!M.spiral[key(n)], tableHot, pidOf: (n) => key(n),
+    mode: () => (last && last.mode) || 'points', losses: (n) => M.losses[key(n)] || 0,
+    support: (n) => { M.supported[key(n)] = true; }, supported: (n) => !!M.supported[key(n)],
     favorite: () => M.favorite,
     setups: (type) => M.setups.filter((s) => !type || s.type === type),
     scoresOf: (n) => (M.scores[key(n)] || []).slice(),

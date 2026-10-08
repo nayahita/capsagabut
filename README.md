@@ -184,41 +184,45 @@ Emote juga muncul otomatis:
 
 ## Paket suara
 
-Default-nya **Meme**. Bisa diganti di layar awal (bagian **Paket suara**, ada tombol tes juga) atau lewat tombol **Suara** di pojok atas, yang muter **Klasik → Meme → Mati**.
+Default-nya **Klasik**. Bisa diganti di layar awal (bagian **Paket suara**, ada tombol tes juga) atau lewat tombol **Suara** di pojok atas: **Klasik → Rame → Mati**.
 
-| Event | Suara meme |
-|---|---|
-| Buang kartu / Pair | pop kartun |
-| Pass | buzzer salah |
-| Kartu 2 satuan | lonceng |
-| Timer 5 detik terakhir | tik-tok balok kayu |
-| Bom / Straight Flush | sumbu + dentuman bass gede + airhorn |
-| Full House | airhorn |
-| Straight | whoosh + peluit seluncur |
-| Flush | scratch piringan hitam + kilauan |
-| Triple | boing |
-| Auto-skip | ba dum tss |
-| Waktu habis | jangkrik |
-| Menang | airhorn + fanfare |
-| Emote Ketawa / Nangis / Marah | klakson sepeda / terompet sedih / klang pipa besi |
-| Emote Kaget / Mantap / Santai | dentuman bass / peluit naik / scratch |
+- **Klasik:** suara meja yang kalem: kartu, pass, combo, bom, dan nada pendek pas ronde selesai. Gak ada suara "kalah".
+- **Rame:** kartu lebih rame (pop, lonceng, boing, peluit seluncur). Sejak v12 paket ini **gak lagi** muter airhorn, terompet sedih, jangkrik, atau "ba dum tss" tiap menang, kalah, timeout, atau full house. Suara-suara kayak gitu bikin suara komedi kehilangan artinya.
+- Pas giliran lu (mode online), HP lu bunyi "ting-ting" pelan. Tik-tok 5 detik terakhir cuma bunyi di HP yang lagi giliran, dan gak pernah ikut dibungkam waktu sistem lagi "hening".
+- Emote pas akhir ronde cuma muncul gambarnya, tanpa suara. Suara emote cuma bunyi kalau pemain sendiri yang ngirim.
+- Suara komedi diatur `src/audio/director.js`: satu suara komedi dalam satu waktu, suara yang sama gak diulang terlalu cepat (kalau dipaksa, turun jadi suara yang lebih kecil atau diam), dan di mode online semua HP mulai barengan.
+- **Main di satu tempat** (pilihan pas bikin room): suara meja dan komedi cuma keluar dari HP host biar gak gema dari 4 HP. Suara giliran tetap di HP masing-masing.
 
-Semua suara (Klasik dan Meme) dibikin langsung di browser pakai Web Audio. Gak ada file audio, jadi aman dari masalah hak cipta. Kalau di setelan perangkat lu nyalain "kurangi gerakan", efek gerak dimatiin dan cuma tulisan yang muncul.
+Suara meja dibikin langsung di browser pakai Web Audio; suara komedi pakai file original di `audio/comedy/` yang bisa lu ganti sendiri. Kalau di setelan perangkat lu nyalain "kurangi gerakan", efek gerak dimatiin dan cuma tulisan yang muncul.
 
 ## Aturan
 
 - Urutan angka: 3 paling kecil, terus naik sampai K, A, dan **2 paling gede**.
 - Urutan bunga: ♦ wajik < ♣ keriting < ♥ hati < ♠ sekop.
 - Tiap orang dapet 13 kartu. Kalau main 2–3 orang, sisa kartu gak dipakai.
-- Ronde pertama dimulai sama yang pegang kartu terkecil (biasanya 3♦), dan kartu itu wajib dibuang di jalan pertama. Ronde berikutnya dimulai sama pemenang ronde sebelumnya.
+- Ronde pertama dimulai sama yang pegang kartu terkecil (biasanya 3♦), dan kartu itu wajib dibuang di jalan pertama. Ronde berikutnya dimulai sama yang habis duluan di ronde sebelumnya.
 - Kombinasi yang sah: Satuan, Pair, Triple (bisa dimatiin), dan 5 kartu.
 - Urutan kombinasi 5 kartu: Straight < Flush < Full House < Four of a Kind (+1) < Straight Flush.
 - Straight pakai urutan biasa. A-2-3-4-5 paling kecil, 10-J-Q-K-A paling gede, dan J-Q-K-A-2 gak sah.
 - Pass gak bikin lu keluar. Kalau semua pemain lain pass, yang terakhir buang bebas buka kombinasi baru.
 - Aturan bom (opsional): Four of a Kind atau Straight Flush bisa makan kartu 2 satuan.
 
-## Poin
+## Main sampai satu kalah (default)
+
+- Yang habis kartunya duluan **aman** (juara 1, 2, 3…), terus ronde **lanjut**. Sisanya tetap lawan-lawanan sampai tinggal satu orang yang masih pegang kartu. Orang itu **kalah**.
+- Kalau yang buang kartu terakhir udah habis dan semua pass, giliran bebas jalan pindah ke pemain berikutnya yang masih main.
+- Bom (kalau "Bom langsung menang" nyala): yang buang bom langsung selesai, sisanya lanjut.
+- **Klasemen ngitung jumlah kalah.** Makin kecil makin jago. Gak ada poin plus-minus.
+- Main 2 orang: begitu satu habis, yang satunya langsung kalah.
+- Bisa dimatiin di layar awal (**Main sampai satu kalah**). Kalau mati, balik ke aturan lama di bawah.
+
+## Poin (aturan lama)
 
 - Yang duluan habis kartunya menang ronde.
 - Yang kalah dapet minus sebanyak sisa kartunya. Sisa 10–12 kartu dikali 2, sisa 13 kartu dikali 3.
 - Pemenang dapet total minus dari semua yang kalah.
+
+## Tes
+
+- `bash tests/run.sh` jalanin semua tes unit (Node): aturan komedi, memory, profil & catatan room, mode satu kalah, bit v2, audio director, plus simulasi frekuensi komedi.
+- `bash tests/run.sh --sim` nambahin simulasi browser (Python + Playwright + Chromium): 3 ronde offline, mabar 3 HP, room ditutup lalu dibuka lagi, pamer kartu. Firebase-nya palsu (`tests/sim/fakefb.js`), jadi gak nyentuh database beneran.

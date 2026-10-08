@@ -44,6 +44,7 @@
     return bufs[k];
   }
   function sound(k, vol) {
+    if (window.CapsaAudio) return window.CapsaAudio.play(k, { vol, perf: curId, late: curLate });
     const V = vol != null ? vol : 0.9;
     if (!FX() || !FX().soundOn()) return;
     load(k).then((b) => {
@@ -88,7 +89,7 @@
   const R = {
     wait() {},
     freeze(s) { freeze(s.ms || 2000); },
-    silence(s) { if (FX()) FX().duck(s.ms || 2000); },
+    silence(s) { if (window.CapsaAudio) window.CapsaAudio.drop(s.ms || 2000, curId); else if (FX()) FX().duck(s.ms || 2000); },
     sound(s) { sound(s.key, s.vol); },
     effect(s) {
       const fx = FX(); if (!fx || reduced()) return;
@@ -172,6 +173,7 @@
         <div class="cd-mm-l1">${esc(s.line1 || '')}</div><div class="cd-mm-l2">${esc(s.line2 || '')}</div>`, 'cd-memorial', s.ms || 4500);
     },
     dim(s) { put('', 'cd-dim', s.ms || 3000); },
+    emote(s) { if (FX() && FX().emote && s.seat != null) FX().emote(s.seat, s.e || 'laugh'); },
     mic(s) {
       const p = seatPoint(s.seat);
       const el = put(`<svg viewBox="0 0 24 24" class="cd-mic-i" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="#fff"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
@@ -244,7 +246,7 @@
     },
     scoreSwap(s) {
       const v = FX() && FX().view();
-      addDeco({ kind: 'score', seat: s.seat, value: s.value, orig: v && v.scores ? v.scores[s.seat] : null, until: Date.now() + (s.ms || 2000) });
+      addDeco({ kind: 'score', seat: s.seat, value: s.value, raw: !!s.raw, orig: v && v.scores ? v.scores[s.seat] : null, until: Date.now() + (s.ms || 2000) });
     },
   };
 
@@ -261,7 +263,7 @@
     for (let i = deco.length - 1; i >= 0; i--) {
       const d = deco[i];
       if (d.until > now) continue;
-      if (d.kind === 'score') { const sc = document.querySelector(`#seat-${d.seat} .sc`); if (sc && sc.firstChild && d.orig != null) sc.firstChild.textContent = (d.orig > 0 ? '+' : '') + d.orig; }
+      if (d.kind === 'score') { const sc = document.querySelector(`#seat-${d.seat} .sc`); if (sc && sc.firstChild && d.orig != null) sc.firstChild.textContent = d.raw ? String(d.orig) : (d.orig > 0 ? '+' : '') + d.orig; }
       deco.splice(i, 1);
     }
     for (const d of deco) {
@@ -282,7 +284,7 @@
         }
       } else if (d.kind === 'score') {
         const sc = document.querySelector(`#seat-${d.seat} .sc`);
-        if (sc && sc.firstChild) { sc.firstChild.textContent = (d.value > 0 ? '+' : '') + d.value; sc.parentElement.classList.add('cd-gold'); setTimeout(() => sc.parentElement && sc.parentElement.classList.remove('cd-gold'), Math.max(0, d.until - Date.now())); }
+        if (sc && sc.firstChild) { sc.firstChild.textContent = d.raw ? String(d.value) : (d.value > 0 ? '+' : '') + d.value; sc.parentElement.classList.add('cd-gold'); setTimeout(() => sc.parentElement && sc.parentElement.classList.remove('cd-gold'), Math.max(0, d.until - Date.now())); }
       }
     }
     // bit 7 "Pass (lagi)": the pass label climbs with passes made while holding a legal play
@@ -364,7 +366,7 @@
 
   /* ---------- player ---------- */
   const queue = [];
-  let busy = false, curId = '';
+  let busy = false, curId = '', curLate = false;
   // a button on a bit pressed within 1.2 s of it appearing = the table waving it away; the director listens
   document.addEventListener('click', (e) => {
     const b = e.target.closest('.cd-el button'); if (!b) return;
@@ -374,8 +376,13 @@
   async function run() {
     if (busy || !queue.length) return;
     busy = true;
-    const p = queue.shift(); curId = p.id || '';
+    const p = queue.shift(); curId = (p.id || '') + ':' + (p.at || Date.now()); curLate = false;
     try {
+      // online: every phone starts at the same server time
+      if (p.at && FX() && FX().serverNow) {
+        const wait = p.at - FX().serverNow();
+        if (wait > 0 && wait < 4000) await sleep(wait); else if (wait < -1500) curLate = true;
+      }
       await sleep(p.delay || 0);
       if (p.note && window.CapsaMemory) window.CapsaMemory.note(p.note.round, p.note.name, p.note.text, p.note.w);
       for (const s of p.steps || []) { const f = R[s.do]; if (f) { try { f(s); } catch (e) { console.warn('[stage]', s.do, e); } } await sleep(nextOf(s)); }
@@ -395,7 +402,8 @@
     const M = mem.match(), rounds = M.rounds.length;
     const names = rounds ? M.rounds[rounds - 1].names : M.names;
     const k = mem.key, wins = (n) => M.wins[k(n)] || 0, pen = (n) => M.penalty[k(n)] || 0;
-    const mvp = [...names].sort((a, b) => wins(b) - wins(a))[0], sus = [...names].sort((a, b) => pen(b) - pen(a))[0];
+    const lossN = (n) => (mem.mode() === 'last' ? mem.losses(n) * 1000 + pen(n) : pen(n));
+    const mvp = [...names].sort((a, b) => wins(b) - wins(a))[0], sus = [...names].sort((a, b) => lossN(b) - lossN(a))[0];
     const bad = Object.values(M.mistakes).reduce((a, b) => a + b, 0);
     const drama = Math.min(100, 12 + bad * 6 + M.ezLosses * 15 + M.bombs * 9 + M.moments.filter((m) => m.w >= 6).length * 8);
     const top = [...M.moments].sort((a, b) => b.w - a.w || b.round - a.round).slice(0, 3);
@@ -405,7 +413,7 @@
       <div class="cd-rc-meta">${rounds} ronde · disusun oleh sistem yang tidak netral</div>
       <div class="cd-rc-lines">
         <div><span>MVP</span><span>${esc(mvp || '-')} (${wins(mvp)} menang)</span></div>
-        <div><span>Tersangka utama</span><span>${esc(sus || '-')} (−${pen(sus)} poin)</span></div>
+        <div><span>Tersangka utama</span><span>${esc(sus || '-')} (${mem.mode() === 'last' ? `${mem.losses(sus)}× kalah` : `−${pen(sus)} poin`})</span></div>
         <div><span>Keputusan buruk tercatat</span><span>${bad} (data internal)</span></div>
         <div><span>"EZ" yang tidak terbukti</span><span>${M.ezLosses}</span></div>
         <div><span>Kartu 2 dibawa mati</span><span>${M.twosDied}</span></div>
@@ -448,7 +456,7 @@
     }
     const panel = document.querySelector('.stats-panel');
     if (panel && window.CapsaComedy && !panel.querySelector('.cd-demos')) {
-      const demos = ['kenangan', 'survei', 'noted', 'prasasti', 'mic-dibuka', 'undangan', 'cctv', 'pembukaan', 'garis-polisi', 'arsip', 'hening', 'ganti-dukungan', 'laporan-kinerja', 'penyebab', 'disarankan', 'patch-notes', 'sistem-ikut-main', 'harapan', 'ez-callback', 'learned-nothing'];
+      const demos = ['rapat-panjang', 'kartu-terbuka', 'pengakuan-diterima', 'modal-awal', 'emote-dikembalikan', 'kebiasaan-baru', 'selamat-datang', 'rivalitas-resmi', 'kejadian-serupa', 'sistem-prihatin', 'kenangan', 'survei', 'noted', 'prasasti', 'mic-dibuka', 'undangan', 'cctv', 'pembukaan', 'garis-polisi', 'arsip', 'hening', 'ganti-dukungan', 'laporan-kinerja', 'penyebab', 'disarankan', 'patch-notes', 'sistem-ikut-main', 'harapan', 'ez-callback', 'learned-nothing'];
       const div = document.createElement('div'); div.className = 'tests cd-demos';
       div.innerHTML = `<span>Tes komedi:</span>${demos.map((id) => `<button class="chip" data-cd-demo="${id}">${id}</button>`).join('')}${mem.match().rounds.length ? '<button class="chip" data-cd-sum="1">laporan</button>' : ''}`;
       panel.appendChild(div);
