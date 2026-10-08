@@ -50,7 +50,26 @@ Emote juga muncul otomatis:
 - **Straight Flush:** ledakan bom + hujan simbol bunga + paduan suara
 - **Kartu 2 satuan:** bunyi "ting" + kilau
 
-Semua suara dibikin langsung di browser, gak ada file audio. Suara bisa dimatiin lewat tombol **Suara** di pojok atas. Kalau di setelan perangkat lu nyalain "kurangi gerakan", efek gerak dimatiin dan cuma tulisan yang muncul.
+## Paket suara
+
+Tombol **Suara** di pojok atas muter tiga pilihan: **Klasik → Meme → Mati**.
+
+Paket **Meme** ganti suara event jadi gaya meme:
+
+| Event | Suara meme |
+|---|---|
+| Bom / Straight Flush | sumbu + dentuman bass gede + airhorn |
+| Full House | airhorn |
+| Straight | whoosh + peluit seluncur |
+| Flush | scratch piringan hitam + kilauan |
+| Triple | boing |
+| Auto-skip | ba dum tss |
+| Waktu habis | jangkrik |
+| Menang | airhorn + fanfare |
+| Emote Ketawa / Nangis / Marah | klakson sepeda / terompet sedih / klang pipa besi |
+| Emote Kaget / Mantap / Santai | dentuman bass / peluit naik / scratch |
+
+Semua suara (Klasik dan Meme) dibikin langsung di browser pakai Web Audio. Gak ada file audio, jadi aman dari masalah hak cipta. Kalau di setelan perangkat lu nyalain "kurangi gerakan", efek gerak dimatiin dan cuma tulisan yang muncul.
 
 ## Aturan
 

@@ -382,7 +382,10 @@ function cardHTML(c,{btn=false,sel=false,must=false}={}){
 const backHTML=(cls='')=>`<div class="card back ${cls}" aria-hidden="true"></div>`;
 
 /* ---------- sound (synthesized, no files) ---------- */
-let soundOn=true;try{soundOn=localStorage.getItem('capsa-sound')!=='0'}catch(e){}
+const SOUND_MODES=['classic','meme','off'],SOUND_LABEL={classic:'Klasik',meme:'Meme',off:'Mati'};
+let soundMode='classic';
+try{const m=localStorage.getItem('capsa-sound-mode');if(SOUND_MODES.includes(m))soundMode=m;else if(localStorage.getItem('capsa-sound')==='0')soundMode='off'}catch(e){}
+let soundOn=soundMode!=='off';
 let AC=null,BUS=null;
 function ac(){
   if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();const comp=AC.createDynamicsCompressor();BUS=AC.createGain();BUS.gain.value=.85;BUS.connect(comp).connect(AC.destination)}catch(e){AC=null}}
@@ -407,7 +410,8 @@ function noise(dur=.5,{vol=.4,delay=0,type='lowpass',f0=1200,f1=80,q=1,curve=2}=
   s.connect(f).connect(g).connect(BUS);s.start(t);
 }
 const chord=(fs,dur,o)=>fs.forEach(f=>tone(f,dur,o));
-const SFX={
+const CLASSIC={
+  timeout:()=>{},
   card:()=>noise(.08,{vol:.35,type:'highpass',f0:2500,f1:6000}),
   tick:()=>tone(1046,.05,{type:'square',vol:.05}),
   pair:()=>{noise(.06,{vol:.3,type:'highpass',f0:2500,f1:6000,delay:.07});tone(660,.08,{vol:.06,delay:.07})},
@@ -431,6 +435,39 @@ const SFX={
     cool:()=>{tone(98,.4,{type:'triangle',vol:.14,to:131});chord([523,659,784],.6,{type:'sine',vol:.04,delay:.15})},
   }
 };
+/* meme pack: generic meme-style sounds, all synthesized here */
+const M={
+  airhorn:(d=0,long=.85)=>[[0,.2],[.26,.2],[.52,long]].forEach(([t,l])=>chord([233,466,470,698],l,{type:'sawtooth',vol:.07,delay:d+t,lp:3200,vib:9,vibRate:7})),
+  rimshot:(d=0)=>{tone(190,.16,{type:'sine',vol:.35,delay:d,to:105});noise(.1,{vol:.3,delay:d,type:'bandpass',f0:900,f1:400});tone(150,.18,{type:'sine',vol:.35,delay:d+.19,to:85});noise(.1,{vol:.3,delay:d+.19,type:'bandpass',f0:700,f1:300});noise(1.1,{vol:.32,delay:d+.42,type:'highpass',f0:6000,f1:9000,curve:1.2})},
+  crickets:(d=0)=>{for(let g=0;g<4;g++)for(let k=0;k<3;k++)tone(4600,.03,{type:'sine',vol:.035,delay:d+g*.45+k*.05})},
+  sadTrombone:(d=0)=>[[311,.38],[294,.38],[277,.38],[262,1.2]].forEach(([f,l],i)=>tone(f,l,{type:'sawtooth',vol:.09,delay:d+i*.42,lp:1300,vib:i===3?10:3,vibRate:6})),
+  bigBoom:(d=0)=>{tone(72,1.6,{type:'sine',vol:.9,delay:d,to:32});tone(144,.5,{type:'triangle',vol:.25,delay:d,to:60});noise(1.2,{vol:.45,delay:d,f0:420,f1:40});[.14,.28].forEach((e,k)=>tone(72,1,{type:'sine',vol:.35/(k+1),delay:d+e,to:34}))},
+  clang:(d=0)=>{noise(.04,{vol:.5,delay:d,type:'highpass',f0:3000,f1:6000});[[523,.14],[1171,.1],[1893,.08],[2747,.06],[3511,.05],[4402,.03]].forEach(([f,v],k)=>tone(f,1.6-k*.18,{type:'sine',vol:v,delay:d}))},
+  slide:(d=0,up=true)=>up?tone(500,.55,{type:'sine',vol:.12,delay:d,to:2100,vib:12,vibRate:9}):tone(2000,.55,{type:'sine',vol:.12,delay:d,to:450,vib:12,vibRate:9}),
+  honk:(d=0)=>[0,.22].forEach(t=>chord([330,349],.18,{type:'square',vol:.07,delay:d+t,lp:1800})),
+  scratch:(d=0)=>{noise(.16,{vol:.5,delay:d,type:'bandpass',f0:2600,f1:350,q:3,curve:.4});noise(.13,{vol:.45,delay:d+.17,type:'bandpass',f0:350,f1:2800,q:3,curve:.4})},
+  boing:(d=0)=>tone(150,.5,{type:'sine',vol:.18,delay:d,to:420,vib:45,vibRate:24}),
+};
+const MEME={
+  timeout:()=>M.crickets(),
+  triple:()=>M.boing(),
+  straight:()=>{CLASSIC.straight();M.slide(.1,true)},
+  flush:()=>{M.scratch();CLASSIC.flush()},
+  full:()=>M.airhorn(),
+  bomb:()=>{CLASSIC.fuse();M.bigBoom(.68);M.airhorn(1.5,.7)},
+  sflush:()=>{CLASSIC.fuse();M.bigBoom(.68);M.airhorn(1.4,1.2);M.airhorn(2.2,.9)},
+  skip:()=>M.rimshot(),
+  win:()=>{M.airhorn(0,.9);CLASSIC.win()},
+  emote:{
+    laugh:()=>M.honk(),
+    cry:()=>M.sadTrombone(),
+    angry:()=>M.clang(),
+    thumbs:()=>M.slide(0,true),
+    shock:()=>M.bigBoom(),
+    cool:()=>{M.scratch();CLASSIC.emote.cool()},
+  }
+};
+const SFX=new Proxy({},{get:(_,k)=>(soundMode==='meme'&&MEME[k])||CLASSIC[k]});
 
 /* ---------- mascot + emotes (original card character) ---------- */
 const EMOTES={
@@ -473,7 +510,7 @@ function mascotSVG(e){
     <circle cx="26" cy="72" r="6" fill="#f29a9a" opacity=".55"/><circle cx="74" cy="72" r="6" fill="#f29a9a" opacity=".55"/>${f}</g></svg>`;
 }
 const emoteCooldown={};
-function emote(i,e,auto=false){
+function emote(i,e,auto=false,silent=false){
   if(!G||!G.players[i]||!EMOTES[e])return;
   const now=Date.now();if(!auto&&(emoteCooldown[i]||0)>now)return;emoteCooldown[i]=now+1500;
   const seat=document.getElementById('seat-'+i);
@@ -482,7 +519,7 @@ function emote(i,e,auto=false){
   x=Math.min(Math.max(x,70),innerWidth-70);y=Math.min(Math.max(y,10),innerHeight-200);
   const d=document.createElement('div');d.className='emote-pop';d.style.left=x+'px';d.style.top=y+'px';d.setAttribute('aria-hidden','true');
   d.innerHTML=`${mascotSVG(e)}<div class="say">${EMOTES[e].say}</div><div class="from">${esc(G.players[i].name)}</div>`;
-  document.body.appendChild(d);SFX.emote[e]();setTimeout(()=>d.remove(),2300);
+  document.body.appendChild(d);if(!silent)SFX.emote[e]();setTimeout(()=>d.remove(),2300);
 }
 
 /* ---------- visual effects ---------- */
@@ -581,7 +618,7 @@ function houseDrop(x,y){
 function comboFx(combo,who,i){
   const rm=RM.matches,[x,y]=boardCenter();
   const react=(e,d)=>setTimeout(()=>emote(i,e,true),d);
-  const others=(e,d)=>G.players.forEach((_,j)=>{if(j!==i)setTimeout(()=>emote(j,e,true),d+j*160)});
+  const others=(e,d)=>{let first=true;G.players.forEach((_,j)=>{if(j!==i){const s=!first;first=false;setTimeout(()=>emote(j,e,true,s),d+j*160)}})};
   switch(combo.name){
     case 'Satuan':if(rk(combo.key[0])===12){SFX.two();if(!rm)explode(x,y,['#fbf7ee','#e2b04f'],40,6)}break;
     case 'Pair':SFX.pair();if(!rm)explode(x,y,['#e2b04f','#fbf7ee'],30,5);break;
@@ -678,7 +715,7 @@ function timeout(){
   const p=G.players[G.turn];G.deadline=null;
   if(G.table){
     const who=G.turn;p.last='Pass';G.sel=new Set();log(`${p.name} kehabisan waktu, otomatis pass`);advance();
-    setTimeout(()=>emote(who,'cry',true),100);
+    SFX.timeout();setTimeout(()=>emote(who,'cry',true),soundMode==='meme'?1700:100);
   }else{
     const c=G.must!=null?G.must:Math.min(...p.hand);
     log(`${p.name} kehabisan waktu, otomatis buang kartu terkecil`);
@@ -706,7 +743,7 @@ function endRound(w,how){
   const nm=G.players[w].name;
   setTimeout(()=>{
     SFX.win();if(!RM.matches)confetti(170);banner(`${nm} menang!`,how==='bomb'?'Pakai bom':'Kartu habis');
-    setTimeout(()=>{emote(w,'laugh',true);G.players.forEach((_,j)=>{if(j!==w)setTimeout(()=>emote(j,'cry',true),350+j*160)})},900);
+    setTimeout(()=>{emote(w,'laugh',true);let first=true;G.players.forEach((_,j)=>{if(j!==w){const s=!first;first=false;setTimeout(()=>emote(j,'cry',true,s),450+j*160)}})},900);
   },how==='bomb'?2500:300);
   let total=0;
   G.result=G.players.map((p,i)=>{
@@ -757,7 +794,7 @@ function headerHTML(){
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
     <div class="top-actions">
-      <button class="btn" data-act="sound" aria-pressed="${soundOn}">${soundOn?'Suara: nyala':'Suara: mati'}</button>
+      <button class="btn" data-act="sound" title="Ganti paket suara: Klasik → Meme → Mati">Suara: ${SOUND_LABEL[soundMode]}</button>
       <button class="btn" data-act="rules" aria-expanded="${showRules}">${showRules?'Tutup aturan':'Aturan'}</button>
       ${G?`<button class="btn ${confirmReset?'warn':''}" data-act="reset">${confirmReset?'Yakin? Klik lagi':'Ganti pemain'}</button>`:''}
     </div>
@@ -884,7 +921,12 @@ app.addEventListener('click',e=>{
   if(b.dataset.emoteOpen!=null){const i=+b.dataset.emoteOpen;picker=picker===i?null:i;return render()}
   if(b.dataset.emote){const i=picker;picker=null;render();return emote(i,b.dataset.emote)}
   if(act==='close-picker'){picker=null;return render()}
-  if(act==='sound'){soundOn=!soundOn;try{localStorage.setItem('capsa-sound',soundOn?'1':'0')}catch(e){}if(soundOn)SFX.skip();return render()}
+  if(act==='sound'){
+    soundMode=SOUND_MODES[(SOUND_MODES.indexOf(soundMode)+1)%SOUND_MODES.length];soundOn=soundMode!=='off';
+    try{localStorage.setItem('capsa-sound-mode',soundMode)}catch(e){}
+    if(soundMode==='meme')M.airhorn();else if(soundMode==='classic')SFX.skip();
+    return render();
+  }
   if(b.dataset.card!=null){const c=+b.dataset.card;G.hint=null;G.sel.has(c)?G.sel.delete(c):G.sel.add(c);return render()}
   if(b.dataset.quick!=null){
     const g=G.plays[+b.dataset.quick]; if(!g) return;
