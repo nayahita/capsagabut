@@ -13,6 +13,11 @@ Capsa Banting (Big Two) buat 2–4 orang, gantian main di satu laptop. Cuma satu
 2. Tiap ganti giliran, kartu ketutup dan muncul layar **Oper laptop ke …**. Pemain berikutnya klik **Buka kartu**.
 3. Klik kartu buat milih, terus klik **Buang** (atau tekan Enter), atau klik **Pass**.
 
+## Fitur bantuan
+
+- **Timer per giliran:** default 30 detik (bisa diganti 15, 60, atau dimatiin di layar awal). Timer mulai pas kartu dibuka. Kalau waktu habis, pemain otomatis Pass. Kalau dia lagi buka meja, otomatis buang kartu terkecil.
+- **Cepat pilih:** tombol di bawah kartu yang nampilin semua kombinasi yang bisa dibuang sekarang (Pair, Straight, Full House, dan lain-lain), plus jumlah pilihannya. Klik sekali buat milih kombinasi paling kecil, klik lagi buat ganti ke yang lebih gede, terus klik **Buang**.
+
 ## Aturan
 
 - Urutan angka: 3 paling kecil, terus naik sampai K, A, dan **2 paling gede**.

@@ -91,6 +91,23 @@ button{font:inherit;color:inherit}
 .log li{color:var(--muted)}
 .log li:first-child{color:var(--ink)}
 
+/* timer + quick picks */
+.timer{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.timer .bar{flex:1;height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
+.timer .bar span{display:block;height:100%;background:var(--brass);transition:width .2s linear}
+.timer b{font-variant-numeric:tabular-nums;min-width:2.2ch;text-align:right;color:var(--ink);font-size:15px}
+.timer.low .bar span{background:var(--danger)}
+.timer.low b{color:var(--danger)}
+.quick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center}
+.quick .lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-right:4px}
+.quick .none{color:var(--muted);font-size:13px}
+.chip{border:1px solid var(--felt-line);background:rgba(255,255,255,.04);border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13px;font-weight:500;transition:background .15s,border-color .15s}
+.chip:hover{border-color:var(--muted)}
+.chip.five{border-color:rgba(226,176,79,.45)}
+.chip small{color:var(--muted);margin-left:5px;font-variant-numeric:tabular-nums}
+.chip[aria-pressed="true"]{border-color:var(--brass);background:rgba(226,176,79,.16);color:var(--brass)}
+.chip[aria-pressed="true"] small{color:var(--brass)}
+
 /* hand zone */
 .zone{border-radius:18px;background:rgba(0,0,0,.28);border:1px solid var(--felt-line);padding:16px;display:flex;flex-direction:column;gap:12px;min-height:220px}
 .zone-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -204,6 +221,28 @@ function beats(p,t,opts){
   if(p.size!==t.size) return false;
   return cmp(p.key,t.key)>0;
 }
+const TYPE_ORDER=['Satuan','Pair','Triple','Straight','Flush','Full House','Four of a Kind','Straight Flush'];
+function* kComb(arr,k,start=0,acc=[]){
+  if(acc.length===k){yield acc.slice();return}
+  for(let i=start;i<=arr.length-(k-acc.length);i++){acc.push(arr[i]);yield* kComb(arr,k,i+1,acc);acc.pop()}
+}
+/* every legal play in a hand, grouped by type, weakest first; duplicates with the same strength keep the lowest cards */
+function findPlays(hand,table,must,opts){
+  const sizes=new Set(table?[table.combo.size]:[1,2,3,5]);
+  if(table&&opts.bomb&&table.combo.size===1&&rk(table.combo.key[0])===12) sizes.add(5);
+  const h=[...hand].sort((a,b)=>a-b), groups={};
+  for(const k of sizes){
+    if(k===3&&!opts.triple) continue;
+    for(const cs of kComb(h,k)){
+      if(must!=null&&!cs.includes(must)) continue;
+      const c=classify(cs,opts); if(!c) continue;
+      if(table&&!beats(c,table.combo,opts)) continue;
+      const g=(groups[c.name]??={}), kk=c.key.join(','), sum=cs.reduce((a,b)=>a+b,0);
+      if(!g[kk]||g[kk].sum>sum) g[kk]={cards:cs,combo:c,sum};
+    }
+  }
+  return TYPE_ORDER.filter(n=>groups[n]).map(n=>({name:n,list:Object.values(groups[n]).sort((a,b)=>cmp(a.combo.key,b.combo.key))}));
+}
 function sortHand(h,mode){
   const a=[...h];
   return mode==='suit'?a.sort((x,y)=>st(x)-st(y)||rk(x)-rk(y)):a.sort((x,y)=>x-y);
@@ -221,13 +260,13 @@ function cardHTML(c,{btn=false,sel=false,must=false}={}){
 const backHTML=(cls='')=>`<div class="card back ${cls}" aria-hidden="true"></div>`;
 
 /* ---------- state ---------- */
-let setup={n:4,names:['','','',''],triple:true,bomb:false};
+let setup={n:4,names:['','','',''],triple:true,bomb:false,timer:30};
 try{const s=JSON.parse(localStorage.getItem('capsa-setup')||'null');if(s)Object.assign(setup,s)}catch(e){}
 let G=null, showRules=false, confirmReset=false;
 
 function newGame(){
   const n=setup.n;
-  G={n,opts:{triple:setup.triple,bomb:setup.bomb},round:0,lastWinner:null,sortMode:'rank',
+  G={n,opts:{triple:setup.triple,bomb:setup.bomb,timer:setup.timer},round:0,lastWinner:null,sortMode:'rank',
      players:Array.from({length:n},(_,i)=>({name:(setup.names[i]||'').trim()||`Pemain ${i+1}`,hand:[],score:0,last:''}))};
   try{localStorage.setItem('capsa-setup',JSON.stringify(setup))}catch(e){}
   startRound();
@@ -244,7 +283,7 @@ function startRound(){
   }else{
     starter=G.lastWinner;log(`${G.players[starter].name} menang ronde lalu, jalan duluan`);
   }
-  G.turn=starter;G.must=must;G.phase='handoff';render();
+  G.turn=starter;G.must=must;G.phase='handoff';G.hint=null;G.deadline=null;render();
 }
 function check(){
   const t=G.table;
@@ -275,8 +314,38 @@ function advance(){
     G.table=null;G.players.forEach(p=>p.last='');
     log(`Semua pass. ${G.players[t].name} bebas jalan`);
   }
-  G.turn=t;G.phase='handoff';render();
+  G.turn=t;G.phase='handoff';G.hint=null;G.deadline=null;render();
 }
+function reveal(){
+  G.phase='turn';G.hint=null;
+  G.deadline=G.opts.timer?Date.now()+G.opts.timer*1000:null;
+}
+function timeout(){
+  if(!G||G.phase!=='turn') return;
+  const p=G.players[G.turn];G.deadline=null;
+  if(G.table){
+    p.last='Pass';G.sel=new Set();log(`${p.name} kehabisan waktu, otomatis pass`);advance();
+  }else{
+    const c=G.must!=null?G.must:Math.min(...p.hand);
+    log(`${p.name} kehabisan waktu, otomatis buang kartu terkecil`);
+    G.sel=new Set([c]);doPlay();
+  }
+}
+function timerHTML(){
+  if(!G.deadline) return '';
+  const left=Math.max(0,G.deadline-Date.now()), s=Math.ceil(left/1000), pct=left/(G.opts.timer*10);
+  return `<div class="timer ${s<=10?'low':''}" id="tmr" role="timer" aria-label="Sisa waktu"><span>Waktu</span><div class="bar"><span style="width:${pct}%"></span></div><b>${s}</b><span>dtk</span></div>`;
+}
+setInterval(()=>{
+  if(!G||G.phase!=='turn'||!G.deadline) return;
+  const left=G.deadline-Date.now();
+  if(left<=0) return timeout();
+  const el=document.getElementById('tmr'); if(!el) return;
+  const s=Math.ceil(left/1000);
+  el.querySelector('b').textContent=s;
+  el.querySelector('.bar span').style.width=(left/(G.opts.timer*10))+'%';
+  el.classList.toggle('low',s<=10);
+},200);
 function endRound(w){
   let total=0;
   G.result=G.players.map((p,i)=>{
@@ -308,6 +377,8 @@ function rulesHTML(){
     <li>Buang kombinasi sejenis dengan jumlah kartu sama yang lebih gede, atau Pass.</li>
     <li>Pass gak bikin lu keluar. Giliran berikutnya boleh main lagi.</li>
     <li>Kalau semua pass, yang terakhir buang bebas buka kombinasi baru.</li>
+    ${!G||G.opts.timer?`<li><b>Timer ${G?G.opts.timer:setup.timer||30} detik</b> mulai pas kartu dibuka. Waktu habis: otomatis Pass, atau kalau lagi buka meja, otomatis buang kartu terkecil.</li>`:''}
+    <li><b>Cepat pilih</b> nampilin semua kombinasi yang bisa lu buang sekarang. Klik sekali buat milih yang paling kecil, klik lagi buat ganti ke yang lebih gede.</li>
     ${G&&G.opts.bomb?'<li><b>Bom aktif:</b> Four of a Kind atau Straight Flush bisa makan kartu 2 satuan.</li>':''}
   </ul></div>
   <div><h3>Poin</h3><ul>
@@ -339,6 +410,9 @@ function setupHTML(){
     <div class="panel">
       <div><label class="lbl">Jumlah pemain</label>
         <div class="seg" role="group" aria-label="Jumlah pemain">${[2,3,4].map(k=>`<button data-n="${k}" aria-pressed="${setup.n===k}">${k} orang</button>`).join('')}</div>
+      </div>
+      <div><label class="lbl">Timer per giliran</label>
+        <div class="seg" role="group" aria-label="Timer per giliran">${[[0,'Mati'],[15,'15 dtk'],[30,'30 dtk'],[60,'60 dtk']].map(([k,l])=>`<button data-timer="${k}" aria-pressed="${setup.timer===k}">${l}</button>`).join('')}</div>
       </div>
       <div><label class="lbl">Nama (urutan duduk)</label><div class="names">${names}</div></div>
       <div style="display:grid;gap:10px">
@@ -379,7 +453,7 @@ function zoneHTML(){
     return `<section class="zone"><div class="handoff">
       <div class="fan">${backHTML()+backHTML()+backHTML()}</div>
       <h2>Oper laptop ke <em>${esc(p.name)}</em></h2>
-      <p>${t?`Di meja: ${esc(G.players[t.by].name)}, ${t.combo.name}. Yang lain jangan ngintip ya.`:'Meja kosong, lu yang buka. Yang lain jangan ngintip ya.'}</p>
+      <p>${t?`Di meja: ${esc(G.players[t.by].name)}, ${t.combo.name}. Yang lain jangan ngintip ya.`:'Meja kosong, lu yang buka. Yang lain jangan ngintip ya.'}${G.opts.timer?` Timer ${G.opts.timer} detik jalan pas kartu dibuka.`:''}</p>
       <button class="btn primary" data-act="reveal">Buka kartu ${esc(p.name)}</button>
     </div></section>`;
   }
@@ -396,10 +470,17 @@ function zoneHTML(){
   }
   const r=check();
   const hand=sortHand(p.hand,G.sortMode).map(c=>cardHTML(c,{btn:true,sel:G.sel.has(c),must:c===G.must})).join('');
+  G.plays=findPlays(p.hand,G.table,G.must,G.opts);
+  const quick=G.plays.length
+    ?G.plays.map((g,i)=>{const on=G.hint&&G.hint.name===g.name;
+      return `<button class="chip ${g.list[0].combo.size===5?'five':''}" data-quick="${i}" aria-pressed="${!!on}">${g.name}<small>${on?`${G.hint.idx+1}/${g.list.length}`:g.list.length}</small></button>`}).join('')
+    :'<span class="none">Gak ada kombinasi yang bisa makan meja. Pass aja.</span>';
   return `<section class="zone" aria-label="Kartu ${esc(p.name)}">
     <div class="zone-head"><h2>Kartu ${esc(p.name)}<small>${p.hand.length} kartu</small></h2>
       <div class="seg" role="group" aria-label="Urutkan"><button data-sort="rank" aria-pressed="${G.sortMode==='rank'}">Urut angka</button><button data-sort="suit" aria-pressed="${G.sortMode==='suit'}">Urut bunga</button></div></div>
+    ${timerHTML()}
     <div class="hand">${hand}</div>
+    <div class="quick" role="group" aria-label="Cepat pilih kombinasi"><span class="lbl">Cepat pilih</span>${quick}</div>
     <div class="status ${r.ok?'ok':r.bad?'bad':''}" role="status">${esc(r.msg)}</div>
     <div class="controls">
       <button class="btn" data-act="pass" ${G.table?'':'disabled'}>Pass</button>
@@ -419,16 +500,22 @@ app.addEventListener('click',e=>{
   if(act!=='reset'&&confirmReset){confirmReset=false}
   if(b.dataset.n){setup.n=+b.dataset.n;return render()}
   if(b.dataset.sort){G.sortMode=b.dataset.sort;return render()}
-  if(b.dataset.card!=null){const c=+b.dataset.card;G.sel.has(c)?G.sel.delete(c):G.sel.add(c);return render()}
+  if(b.dataset.timer!=null){setup.timer=+b.dataset.timer;return render()}
+  if(b.dataset.card!=null){const c=+b.dataset.card;G.hint=null;G.sel.has(c)?G.sel.delete(c):G.sel.add(c);return render()}
+  if(b.dataset.quick!=null){
+    const g=G.plays[+b.dataset.quick]; if(!g) return;
+    const idx=G.hint&&G.hint.name===g.name?(G.hint.idx+1)%g.list.length:0;
+    G.hint={name:g.name,idx};G.sel=new Set(g.list[idx].cards);return render();
+  }
   switch(act){
     case 'rules':showRules=!showRules;break;
     case 'reset':if(!confirmReset){confirmReset=true;break}confirmReset=false;G=null;break;
     case 'setup':G=null;break;
     case 'start':return newGame();
-    case 'reveal':G.phase='turn';break;
+    case 'reveal':reveal();break;
     case 'play':return doPlay();
     case 'pass':return doPass();
-    case 'clear':G.sel=new Set();break;
+    case 'clear':G.sel=new Set();G.hint=null;break;
     case 'next':return startRound();
   }
   render();
