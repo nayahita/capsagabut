@@ -44,7 +44,28 @@ Catatan teknis:
 - **Timer per giliran:** default 30 detik (bisa diganti 15, 60, atau dimatiin di layar awal). Timer mulai pas kartu dibuka. Kalau waktu habis, pemain otomatis Pass. Kalau dia lagi buka meja, otomatis buang kartu terkecil.
 - **Cepat pilih:** tombol di bawah kartu yang nampilin semua kombinasi yang bisa dibuang sekarang (Pair, Straight, Full House, dan lain-lain), plus jumlah pilihannya. Klik sekali buat milih kombinasi paling kecil, klik lagi buat ganti ke yang lebih gede, terus klik **Buang**.
 
+## Comedy Director
+
+Game ini punya "sutradara komedi" yang nonton pertandingan, nyimpen kejadian penting, dan sesekali mutusin buat ganggu mental pemain. Defaultnya **diam**: kebanyakan kejadian gak dapet reaksi. Kalau muncul, reaksinya selalu nyambung sama konteks (siapa, kartu apa, ronde berapa, udah berapa kali kejadian), dan kadang balik lagi ke kejadian ronde-ronde sebelumnya.
+
+Contoh:
+- Ngetik **EZ** di chat, terus kalah: layar ke-freeze, sunyi, muncul notif sistem "Pesan sebelumnya terdeteksi", bubble "EZ" nongol lagi, jeda, terus "Menarik."
+- Kalah di kartu terakhir → "Menarik." Beberapa ronde kemudian tinggal 1 kartu lagi → "Not this again." Kalau menang → "Character development." Kalau kalah lagi → "We have learned nothing."
+- Menang 3x beruntun → poster **DICARI** (bounty). Siapa pun yang ngalahin dia dapet notif "Bounty diklaim".
+- Bales dendam ke yang dulu ngebantai lu → struk pelunasan dengan stempel **LUNAS**.
+- Kejadian langka: layar error `CAPSA.EXE berhenti merespons`, sidang di pengadilan, atau 13 kartu yang dijual di marketplace karena "masih segel".
+
+Fitur pendukung:
+- **Chat cepat** (tombol Chat di atas): preset trash talk yang diingat sistem.
+- **Gelar reputasi** di kursi pemain, misalnya "Spesialis Nyaris" atau "Kolektor Kartu 2". Kesimpen di device.
+- Tombol **Laporan pertandingan** di layar hasil ronde (mulai ronde 2): roast summary satu match.
+- **Statistik → Tes komedi**: preview tiap bit.
+
+Desain lengkap (arsitektur, data konteks, aturan rarity/peluang, 32 bit, cara nambah bit) ada di **[`docs/COMEDY_DIRECTOR.md`](docs/COMEDY_DIRECTOR.md)**. Pengaturan ada di `src/comedy/config.js`, bit-nya di `src/comedy/bits.js`, dan suaranya (original, bisa diganti) di `audio/comedy/`. Di mode online, cuma HP host yang mutusin, terus semua HP muterin reaksi yang sama persis.
+
 ## Event & reaksi
+
+> Kartu judgement versi lama sekarang dimatiin, karena perannya udah digantiin Comedy Director (`replaceReactionCards` di `src/comedy/config.js`). Statistik dari sistem ini tetap jalan.
 
 Pas ronde selesai, game nyari kejadian seru terus nampilin **kartu judgement** di atas layar: roast, baris statistik, suara, dan efek. Di mode online, kartunya muncul di semua HP.
 

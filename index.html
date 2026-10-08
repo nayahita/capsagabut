@@ -481,8 +481,9 @@ function ac(){
   if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});
   return AC;
 }
+let muteUntil=0;
 function tone(f,dur=.15,{type='triangle',vol=.15,delay=0,to=null,vib=0,vibRate=6,lp=0}={}){
-  if(!soundOn)return;const a=ac();if(!a)return;
+  if(!soundOn||Date.now()<muteUntil)return;const a=ac();if(!a)return;
   const t=a.currentTime+delay,o=a.createOscillator(),g=a.createGain();
   o.type=type;o.frequency.setValueAtTime(f,t);if(to)o.frequency.exponentialRampToValueAtTime(to,t+dur);
   if(vib){const l=a.createOscillator(),lg=a.createGain();l.frequency.value=vibRate;lg.gain.value=vib;l.connect(lg).connect(o.frequency);l.start(t);l.stop(t+dur+.05)}
@@ -491,7 +492,7 @@ function tone(f,dur=.15,{type='triangle',vol=.15,delay=0,to=null,vib=0,vibRate=6
   node.connect(g).connect(BUS);o.start(t);o.stop(t+dur+.05);
 }
 function noise(dur=.5,{vol=.4,delay=0,type='lowpass',f0=1200,f1=80,q=1,curve=2}={}){
-  if(!soundOn)return;const a=ac();if(!a)return;
+  if(!soundOn||Date.now()<muteUntil)return;const a=ac();if(!a)return;
   const t=a.currentTime+delay,len=Math.max(1,Math.floor(a.sampleRate*dur)),buf=a.createBuffer(1,len,a.sampleRate),d=buf.getChannelData(0);
   for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,curve);
   const s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain();
@@ -737,7 +738,16 @@ function comboFx(combo,who,i,cards){
 
 /* ---------- public effects API (used by src/reactions.js) ---------- */
 window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardCenter,particle:fxAdd,mascotSVG,
-  emote:(i,e)=>emote(i,e,true),audio:()=>{const a=ac();return a?{ctx:a,out:BUS}:null},soundOn:()=>soundMode!=='off'};
+  emote:(i,e)=>emote(i,e,true),audio:()=>{const a=ac();return a?{ctx:a,out:BUS}:null},soundOn:()=>soundMode!=='off',
+  cardHTML:(c)=>cardHTML(c),label:(c)=>label(c),
+  /* module hooks: everything below is read-only or effect-only; no game rules */
+  fact:(type,data)=>fact(type,data),
+  broadcast:(type,data)=>fx({t:'mod',type,data}),
+  view:()=>G?{phase:G.phase,round:G.round,turn:G.turn,n:G.n,names:G.players.map(p=>p.name),counts:G.players.map(p=>p.hand.length),
+    online:isOnline(),me:G.online?G.online.me:null,authority:!G.online||G.online.isHost,timer:G.opts.timer}
+    :{phase:NET?'lobby':'setup',online:!!NET,authority:!NET,me:null,names:[]},
+  holdTimer:(ms)=>{if(G&&G.phase==='turn'&&G.deadline&&(!G.online||G.online.isHost)){G.deadline+=ms;render()}},
+  duck:(ms)=>{muteUntil=Math.max(muteUntil,Date.now()+ms)}};
 
 /* ---------- state ---------- */
 let setup={n:4,names:['','','',''],triple:true,bomb:false,timer:30,bombWin:true,autoSkip:true,mode:'normal',style:'local',myName:'',joinCode:''};
@@ -769,6 +779,7 @@ function fx(ev){
 function fact(type,data){fx({t:'fact',type,data})}
 function playEvent(ev){
   if(ev.t==='fact'){if(window.CapsaEvents)window.CapsaEvents.ingest(ev.type,ev.data);return}
+  if(ev.t==='mod'){document.dispatchEvent(new CustomEvent('capsa:mod',{detail:{type:ev.type,data:ev.data}}));return}
   if(!G)return;
   switch(ev.t){
     case 'combo':SFX.card();comboFx({name:ev.name,key:ev.key,size:(ev.cards||[]).length},ev.who,ev.seat,ev.cards||[]);break;
@@ -817,19 +828,20 @@ function check(){
 }
 function doPlay(){
   const r=check(); if(!r.ok) return;
-  const p=G.players[G.turn], cards=[...G.sel];
+  const p=G.players[G.turn], cards=[...G.sel], prev=G.table;
   p.hand=p.hand.filter(c=>!G.sel.has(c));
   G.table={cards:sortHand(cards,'rank'),combo:r.combo,by:G.turn};
   p.last=r.combo.name;G.must=null;G.sel=new Set();G.hint=null;
   log(`${p.name}: ${r.combo.name} ${G.table.cards.map(label).join(' ')}`);
   fx({t:'combo',seat:G.turn,who:p.name,name:r.combo.name,key:r.combo.key,cards:G.table.cards});
-  fact('play',{seat:G.turn,name:p.name,combo:r.combo.name,cat:r.combo.cat,size:r.combo.size,counts:G.players.map(q=>q.hand.length)});
+  fact('play',{seat:G.turn,name:p.name,combo:r.combo.name,cat:r.combo.cat,size:r.combo.size,cards:G.table.cards,counts:G.players.map(q=>q.hand.length),
+    prev:prev?{combo:prev.combo.name,size:prev.combo.size,cards:prev.cards,by:prev.by}:null,t:Date.now()});
   if(r.combo.cat>=4&&G.opts.bombWin){log(`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
   if(!p.hand.length) return endRound(G.turn,'habis');
   if(G.opts.autoSkip&&nobodyCanAnswer()){
     G.table=null;G.players.forEach(q=>q.last='');
     log(`Gak ada yang bisa lawan. ${p.name} jalan lagi`);
-    const me=G.turn;
+    const me=G.turn;fact('skip',{seat:me,name:p.name});
     fx({t:'skip',who:p.name,d0:r.combo.size>=3?1000:200,grumpy:rnd(G.players.map((_,j)=>j).filter(j=>j!==me))});
     reveal();render();return;
   }
@@ -840,8 +852,9 @@ function nobodyCanAnswer(){
 }
 function doPass(){
   if(!G.table) return;
-  const p=G.players[G.turn];p.last='Pass';G.sel=new Set();log(`${p.name} pass`);fx({t:'pass'});
-  fact('pass',{seat:G.turn,name:p.name,timeout:false});advance();
+  const p=G.players[G.turn],hadPlay=findPlays(p.hand,G.table,null,G.opts).length>0;
+  p.last='Pass';G.sel=new Set();log(`${p.name} pass`);fx({t:'pass'});
+  fact('pass',{seat:G.turn,name:p.name,timeout:false,hadPlay,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by}});advance();
 }
 function advance(){
   const t=(G.turn+1)%G.n;
@@ -862,7 +875,7 @@ function timeout(){
   const p=G.players[G.turn];G.deadline=null;
   if(G.table){
     const who=G.turn;p.last='Pass';G.sel=new Set();log(`${p.name} kehabisan waktu, otomatis pass`);
-    fact('pass',{seat:who,name:p.name,timeout:true});advance();
+    fact('pass',{seat:who,name:p.name,timeout:true,hadPlay:findPlays(p.hand,G.table,null,G.opts).length>0,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by}});advance();
     fx({t:'timeout',seat:who});
   }else{
     const c=G.must!=null?G.must:Math.min(...p.hand);
@@ -907,7 +920,7 @@ function endRound(w,how){
   });
   G.players[w].score+=total;G.result[w].gain=total;
   fact('round:end',{round:G.round,winner:w,how,names:G.players.map(p=>p.name),counts,penalties:G.result.map(r=>r.pen),
-    scoresBefore,scoresAfter:G.players.map(p=>p.score),delay:how==='bomb'?3600:1900});
+    hands:G.players.map(p=>[...p.hand]),final:G.table?{combo:G.table.combo.name,cards:G.table.cards}:null,scoresBefore,scoresAfter:G.players.map(p=>p.score),delay:how==='bomb'?3600:1900});
   G.lastWinner=w;G.phase='end';render();
 }
 function uiPlay(){
@@ -1157,7 +1170,7 @@ function headerHTML(){
   let meta;
   if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v8`;
+  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v9`;
   const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
@@ -1354,6 +1367,7 @@ function render(){
   else body=setupHTML();
   app.innerHTML=headerHTML()+body;
   publish();
+  document.dispatchEvent(new CustomEvent('capsa:render',{detail:{phase:G?G.phase:(NET?'lobby':'setup')}}));
 }
 
 /* ---------- events ---------- */
@@ -1428,6 +1442,12 @@ else if(hashCode&&savedRoom()===hashCode){joinRoom(hashCode)}
 <script src="src/events.js"></script>
 <script src="src/stats.js"></script>
 <script src="src/reactions.js"></script>
+<script src="src/comedy/config.js"></script>
+<script src="src/comedy/director.js"></script>
+<script src="src/comedy/memory.js"></script>
+<script src="src/comedy/bits.js"></script>
+<script src="src/comedy/stage.js"></script>
+<script src="src/chat.js"></script>
 <script>if("serviceWorker" in navigator&&location.protocol==="https:"){addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}</script>
 </body>
 </html>
