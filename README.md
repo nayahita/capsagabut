@@ -1,17 +1,43 @@
 # Capsa Banting
 
-Capsa Banting (Big Two) buat 2–4 orang, gantian main di satu laptop. Cuma satu file HTML, gak perlu install apa-apa.
+Capsa Banting (Big Two) buat 2–4 orang. Bisa gantian di satu device, atau **mabar online dari HP masing-masing**. Bisa di-install di HP kayak app.
 
-## Cara buka
+Link main: **https://nayahita.github.io/capsagabut/**
 
-- **Lokal:** download `index.html`, terus buka di browser.
-- **Online:** nyalain GitHub Pages (Settings → Pages → Deploy from branch → `main` / root). Game bisa dibuka di `https://nayahita.github.io/capsagabut/`.
+## Pasang di GitHub Pages (sekali aja)
 
-## Cara main
+1. Repo harus **public** (Settings → General → Danger Zone → Change visibility), karena GitHub Pages gratis cuma jalan buat repo public.
+2. Settings → Pages → Build and deployment → **Deploy from a branch** → `main` / `/ (root)` → Save.
+3. Tunggu 1–2 menit, terus buka link di atas.
 
-1. Pilih jumlah pemain (2–4), isi nama sesuai urutan duduk, klik **Kocok & bagi kartu**.
-2. Tiap ganti giliran, kartu ketutup dan muncul layar **Oper laptop ke …**. Pemain berikutnya klik **Buka kartu**.
+## Install di HP
+
+- **Android (Chrome):** buka link → menu ⋮ → **Install app** / **Add to Home screen**.
+- **iPhone (Safari):** buka link → tombol Share → **Add to Home Screen**.
+
+Nanti muncul ikon Capsa di layar HP. Dibukanya full screen tanpa address bar. Mode satu device tetap bisa dimainin walau offline, asal game-nya udah pernah dibuka sekali pas ada internet.
+
+## Cara main: satu device
+
+1. Pilih **Satu device**, jumlah pemain (2–4), isi nama sesuai urutan duduk, terus klik **Kocok & bagi kartu**.
+2. Tiap ganti giliran, kartu ketutup dan muncul layar **Oper ke …**. Pemain berikutnya klik **Buka kartu**.
 3. Klik kartu buat milih, terus klik **Buang** (atau tekan Enter), atau klik **Pass**.
+
+## Cara main: mabar online
+
+1. Semua orang buka link game dan pilih **Mabar online**, terus isi nama.
+2. Satu orang (host) klik **Bikin room**, nanti dapet kode 4 huruf. Kirim kodenya, atau klik **Salin link** terus tempel di grup.
+3. Yang lain masukin kode terus klik **Gabung** (atau langsung buka link dari host).
+4. Host klik **Mulai main** kalau udah ada 2–4 orang.
+
+Kartu lu cuma kelihatan di HP lu. Emote, efek combo, dan suara muncul di semua HP. Aturan room (mode, timer, aturan bom) ikut pengaturan host pas bikin room.
+
+Catatan teknis:
+- Data room disimpan di Firebase Realtime Database (project `capsuy`). HP host jadi wasit: dia yang bagi kartu, ngecek kartu yang dibuang, dan ngatur timer.
+- Kalau ada pemain yang offline pas gilirannya, setelah 8 detik dia otomatis Pass. Kalau dia lagi buka meja, otomatis buang kartu terkecil.
+- Kalau host offline, game berhenti dulu sampai host balik. Refresh halaman lalu klik **Balik ke room** buat nyambung lagi.
+- Mode online gak jalan di preview Claude karena koneksi ke server luar diblok di sana. Pakai link GitHub Pages.
+- Kartu tiap pemain tersimpan di database room. Orang yang ngerti teknis bisa ngintip lewat developer tools, jadi mainnya sama temen yang bisa dipercaya ya.
 
 ## Fitur bantuan
 

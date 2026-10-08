@@ -1,0 +1,17 @@
+{
+  "name": "Capsa Banting",
+  "short_name": "Capsa",
+  "description": "Capsa Banting buat 2–4 orang: gantian di satu device atau mabar online dari HP masing-masing.",
+  "lang": "id",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a2a23",
+  "theme_color": "#0a2a23",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
