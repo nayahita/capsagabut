@@ -18,6 +18,19 @@ Capsa Banting (Big Two) buat 2–4 orang, gantian main di satu laptop. Cuma satu
 - **Timer per giliran:** default 30 detik (bisa diganti 15, 60, atau dimatiin di layar awal). Timer mulai pas kartu dibuka. Kalau waktu habis, pemain otomatis Pass. Kalau dia lagi buka meja, otomatis buang kartu terkecil.
 - **Cepat pilih:** tombol di bawah kartu yang nampilin semua kombinasi yang bisa dibuang sekarang (Pair, Straight, Full House, dan lain-lain), plus jumlah pilihannya. Klik sekali buat milih kombinasi paling kecil, klik lagi buat ganti ke yang lebih gede, terus klik **Buang**.
 
+## Mode & aturan rumah
+
+Semua bisa dinyalain/dimatiin di layar awal.
+
+- **Mayhem:** tiap pemain dapet bom (Four of a Kind atau Straight Flush), Full House, dan kartu-kartu tinggi. Siapa cepat dia menang.
+- **Bom langsung menang** (default nyala): yang berhasil buang Four of a Kind atau Straight Flush langsung menang ronde.
+- **Auto-skip** (default nyala): kalau kartu yang lu buang gak bisa dilawan siapa pun, giliran langsung balik ke lu dan lu bebas buka lagi.
+- **Bom bisa makan 2** (default mati): Four of a Kind atau Straight Flush boleh dibuang buat makan kartu 2 satuan.
+
+## Efek
+
+Triple, Straight, Flush, Full House, Four of a Kind, dan Straight Flush punya animasi dan suara sendiri. Bom dapet ledakan, layar goyang, sama kilat. Suara bisa dimatiin lewat tombol **Suara** di pojok atas. Kalau di setelan perangkat lu nyalain "kurangi gerakan", efeknya cuma tulisan doang.
+
 ## Aturan
 
 - Urutan angka: 3 paling kecil, terus naik sampai K, A, dan **2 paling gede**.

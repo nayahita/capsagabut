@@ -174,7 +174,24 @@ button.card[aria-pressed="true"]{transform:translateY(-18px);box-shadow:0 0 0 3p
 .check input{accent-color:var(--brass);width:18px;height:18px;margin:1px 0 0}
 .check small{display:block;color:var(--muted)}
 
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* effects */
+.fx-canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:40}
+.fx-text{position:fixed;left:50%;top:40%;z-index:45;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;width:max-content;max-width:92vw;animation:fxPop 1.6s cubic-bezier(.2,.9,.3,1.3) forwards}
+.fx-text b{font-family:var(--f-display);font-style:italic;font-weight:700;font-size:clamp(44px,9vw,100px);line-height:1;color:var(--brass);text-shadow:0 4px 0 var(--felt-deep),0 0 34px rgba(226,176,79,.5)}
+.fx-text span{font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);background:rgba(0,0,0,.55);padding:5px 14px;border-radius:999px}
+.fx-text.big{animation-duration:2.3s}
+.fx-text.big b{font-size:clamp(60px,14vw,156px);color:#ffd166;text-shadow:0 5px 0 #7a1d12,0 0 60px rgba(255,107,53,.85)}
+.fx-text.skip b{font-size:clamp(30px,6vw,60px);color:var(--ink);text-shadow:0 3px 0 var(--felt-deep),0 0 24px rgba(155,227,180,.5)}
+@keyframes fxPop{0%{opacity:0;transform:translate(-50%,-50%) scale(.35)}14%{opacity:1;transform:translate(-50%,-50%) scale(1.1)}24%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-62%) scale(1)}}
+@keyframes fxFade{0%,100%{opacity:0;transform:translate(-50%,-50%)}15%,80%{opacity:1;transform:translate(-50%,-50%)}}
+.fx-flash{position:fixed;inset:0;background:#fff1d0;z-index:44;pointer-events:none;animation:fxFlash .65s ease-out forwards}
+@keyframes fxFlash{0%{opacity:.85}100%{opacity:0}}
+.shake{animation:shake .6s}
+@keyframes shake{0%,100%{transform:none}10%{transform:translate(-11px,6px) rotate(-.6deg)}20%{transform:translate(10px,-7px) rotate(.5deg)}30%{transform:translate(-8px,-4px)}42%{transform:translate(7px,6px)}56%{transform:translate(-4px,3px)}70%{transform:translate(3px,-2px)}85%{transform:translate(-1px,1px)}}
+.mode-desc{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:44ch}
+.tag-mayhem{color:#ffd166}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.fx-text{animation-name:fxFade}}
 </style>
 </head>
 <body>
@@ -247,6 +264,54 @@ function sortHand(h,mode){
   const a=[...h];
   return mode==='suit'?a.sort((x,y)=>st(x)-st(y)||rk(x)-rk(y)):a.sort((x,y)=>x-y);
 }
+/* Mayhem: every player gets a bomb (quad or straight flush), a full house, then the strongest leftovers round-robin */
+const rnd=a=>a[Math.floor(Math.random()*a.length)];
+function pickQuad(av){
+  const rs=[];for(let r=0;r<13;r++)if([0,1,2,3].every(s=>av.has(r*4+s)))rs.push(r);
+  if(!rs.length)return null;const r=rnd(rs);return [0,1,2,3].map(s=>r*4+s);
+}
+function pickSF(av){
+  const opts=[];
+  for(let s=0;s<4;s++)for(let st0=1;st0<=10;st0++){
+    const cs=[];for(let k=0;k<5;k++){let x=st0+k;if(x===14)x=1;cs.push(NAT.indexOf(x)*4+s)}
+    if(cs.every(c=>av.has(c)))opts.push(cs);
+  }
+  return opts.length?rnd(opts):null;
+}
+function pickFH(av){
+  const by=r=>[0,1,2,3].map(s=>r*4+s).filter(c=>av.has(c));
+  const trips=[];for(let r=0;r<13;r++)if(by(r).length>=3)trips.push(r);
+  if(!trips.length)return null;
+  const t=rnd(trips);
+  const pairs=[];for(let r=0;r<13;r++)if(r!==t&&by(r).length>=2)pairs.push(r);
+  if(!pairs.length)return null;
+  const p=rnd(pairs);
+  return [...shuffle(by(t)).slice(0,3),...shuffle(by(p)).slice(0,2)];
+}
+function dealMayhem(n){
+  for(let tries=0;tries<300;tries++){
+    const av=new Set([...Array(52).keys()]), hands=Array.from({length:n},()=>[]);
+    const take=cs=>{cs.forEach(c=>av.delete(c));return cs};
+    let ok=true;
+    for(let i=0;i<n&&ok;i++){
+      const first=Math.random()<.5?pickQuad:pickSF, second=first===pickQuad?pickSF:pickQuad;
+      const bomb=first(av)||second(av);if(!bomb){ok=false;break}
+      hands[i].push(...take(bomb));
+      const fh=pickFH(av);if(!fh){ok=false;break}
+      hands[i].push(...take(fh));
+    }
+    if(!ok)continue;
+    const rest=shuffle([...av]).sort((a,b)=>b-a);
+    let i=Math.floor(Math.random()*n);
+    for(const c of rest){
+      let guard=0;while(hands[i].length>=13&&guard++<n)i=(i+1)%n;
+      if(hands[i].length>=13)break;
+      hands[i].push(c);i=(i+1)%n;
+    }
+    if(hands.every(h=>h.length===13))return hands;
+  }
+  return null;
+}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 
 function cardHTML(c,{btn=false,sel=false,must=false}={}){
@@ -259,22 +324,108 @@ function cardHTML(c,{btn=false,sel=false,must=false}={}){
 }
 const backHTML=(cls='')=>`<div class="card back ${cls}" aria-hidden="true"></div>`;
 
+/* ---------- sound (synthesized, no files) ---------- */
+let soundOn=true;try{soundOn=localStorage.getItem('capsa-sound')!=='0'}catch(e){}
+let AC=null;
+function ac(){
+  if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){AC=null}}
+  if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});
+  return AC;
+}
+function tone(f,dur=.15,type='triangle',vol=.15,delay=0){
+  if(!soundOn)return;const a=ac();if(!a)return;
+  const t=a.currentTime+delay,o=a.createOscillator(),g=a.createGain();
+  o.type=type;o.frequency.setValueAtTime(f,t);
+  g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g).connect(a.destination);o.start(t);o.stop(t+dur+.05);
+}
+function noise(dur=.6,vol=.5,delay=0,cutoff=1200){
+  if(!soundOn)return;const a=ac();if(!a)return;
+  const t=a.currentTime+delay,len=Math.floor(a.sampleRate*dur),buf=a.createBuffer(1,len,a.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2);
+  const s=a.createBufferSource(),f=a.createBiquadFilter(),g=a.createGain();
+  s.buffer=buf;f.type='lowpass';f.frequency.setValueAtTime(cutoff,t);f.frequency.exponentialRampToValueAtTime(80,t+dur);g.gain.value=vol;
+  s.connect(f).connect(g).connect(a.destination);s.start(t);
+}
+const SFX={
+  card:()=>noise(.07,.3,0,4000),
+  tick:()=>tone(880,.05,'square',.05),
+  triple:()=>[440,554,659].forEach((f,i)=>tone(f,.14,'triangle',.1,i*.07)),
+  straight:()=>[392,440,494,523,587,659].forEach((f,i)=>tone(f,.12,'triangle',.12,i*.055)),
+  flush:()=>[784,988,1175,1568,1976].forEach((f,i)=>tone(f,.4,'sine',.07,i*.06)),
+  full:()=>{[262,330,392].forEach(f=>tone(f,.55,'triangle',.1));[523,659,784].forEach(f=>tone(f,.5,'sine',.06,.14))},
+  bomb:()=>{noise(1.3,.9,0,900);tone(70,.9,'sine',.5);tone(42,1.1,'sine',.4,.05)},
+  sflush:()=>{SFX.bomb();[523,659,784,1047,1319,1568].forEach((f,i)=>tone(f,.3,'triangle',.08,.3+i*.07))},
+  skip:()=>{tone(523,.12,'square',.06);tone(784,.28,'square',.06,.12)},
+  win:()=>[523,659,784,1047].forEach((f,i)=>tone(f,i===3?.7:.16,'triangle',.12,i*.13)),
+};
+
+/* ---------- visual effects ---------- */
+const RM=matchMedia('(prefers-reduced-motion: reduce)');
+const FX={cv:null,ctx:null,parts:[],run:false};
+function fxSize(){const d=devicePixelRatio||1;FX.cv.width=innerWidth*d;FX.cv.height=innerHeight*d;FX.ctx.setTransform(d,0,0,d,0,0)}
+function fxAdd(p){
+  if(!FX.cv){FX.cv=document.createElement('canvas');FX.cv.className='fx-canvas';document.body.appendChild(FX.cv);FX.ctx=FX.cv.getContext('2d');fxSize();addEventListener('resize',fxSize)}
+  FX.parts.push(Object.assign({vx:0,vy:0,g:0,drag:.99,life:0,max:60,size:6,rot:0,vr:0,shape:'dot',color:'#fff'},p));
+  if(!FX.run){FX.run=true;requestAnimationFrame(fxLoop)}
+}
+function fxLoop(){
+  const ctx=FX.ctx;ctx.clearRect(0,0,innerWidth,innerHeight);
+  FX.parts=FX.parts.filter(p=>{
+    p.life++;p.vx*=p.drag;p.vy=p.vy*p.drag+p.g;p.x+=p.vx;p.y+=p.vy;p.rot+=p.vr;
+    const a=1-p.life/p.max;if(a<=0)return false;
+    ctx.save();ctx.globalAlpha=Math.min(1,a*1.6);ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.fillStyle=p.color;ctx.strokeStyle=p.color;
+    if(p.shape==='rect')ctx.fillRect(-p.size/2,-p.size/4,p.size,p.size/2);
+    else if(p.shape==='char'){ctx.font=`${p.size}px Rubik, system-ui, sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.ch,0,0)}
+    else if(p.shape==='streak'){ctx.lineWidth=p.size;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(-p.vx*5,-p.vy*5);ctx.stroke()}
+    else{ctx.beginPath();ctx.arc(0,0,p.size*a+.5,0,7);ctx.fill()}
+    ctx.restore();return true;
+  });
+  if(FX.parts.length)requestAnimationFrame(fxLoop);else{FX.run=false;ctx.clearRect(0,0,innerWidth,innerHeight)}
+}
+function boardCenter(){const b=document.querySelector('.board');if(!b)return [innerWidth/2,innerHeight/2];const r=b.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]}
+const FIRE=['#ff6b35','#ffd166','#e2b04f','#fbf7ee','#c2312a'];
+function explode(x,y,colors,n=180,sp=12){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,v=Math.random()*sp+2;fxAdd({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,g:.12,drag:.96,max:50+Math.random()*45,size:2+Math.random()*4,color:rnd(colors)})}}
+function confetti(n=140){for(let i=0;i<n;i++)fxAdd({x:Math.random()*innerWidth,y:-20-Math.random()*220,vx:(Math.random()-.5)*3,vy:2+Math.random()*3,g:.05,drag:.995,max:170+Math.random()*60,size:8+Math.random()*6,shape:'rect',rot:Math.random()*6,vr:(Math.random()-.5)*.3,color:rnd(['#e2b04f','#fbf7ee','#c2312a','#9be3b4'])})}
+function suitRain(ch,color,n=55){for(let i=0;i<n;i++)fxAdd({x:Math.random()*innerWidth,y:-30-Math.random()*320,vy:3+Math.random()*4,g:.04,drag:1,max:150,size:22+Math.random()*28,shape:'char',ch,rot:(Math.random()-.5)*.6,vr:(Math.random()-.5)*.05,color})}
+function streaks(y,n=45){for(let i=0;i<n;i++)fxAdd({x:-40-Math.random()*320,y:y+(Math.random()-.5)*170,vx:17+Math.random()*10,drag:1,max:95,size:2+Math.random()*3,shape:'streak',color:rnd(['#e2b04f','#fbf7ee'])})}
+function banner(text,sub='',kind=''){
+  const d=document.createElement('div');d.className='fx-text '+kind;d.setAttribute('aria-hidden','true');
+  d.innerHTML=`<b>${esc(text)}</b>${sub?`<span>${esc(sub)}</span>`:''}`;
+  document.body.appendChild(d);setTimeout(()=>d.remove(),kind==='big'?2300:1600);
+}
+function flash(){const d=document.createElement('div');d.className='fx-flash';document.body.appendChild(d);setTimeout(()=>d.remove(),650)}
+function shake(){const a=document.getElementById('app');a.classList.remove('shake');void a.offsetWidth;a.classList.add('shake');setTimeout(()=>a.classList.remove('shake'),650)}
+const suitColor=s=>s===0||s===2?'#e8564d':'#fbf7ee';
+function comboFx(combo,who){
+  const rm=RM.matches,[x,y]=boardCenter();
+  switch(combo.name){
+    case 'Triple':SFX.triple();banner('Triple',who);break;
+    case 'Straight':SFX.straight();banner('Straight',who);if(!rm)streaks(y);break;
+    case 'Flush':{const s=st(combo.key[1]);SFX.flush();banner('Flush',who);if(!rm)suitRain(SUITS[s],suitColor(s));break}
+    case 'Full House':SFX.full();banner('Full House',who);if(!rm){confetti(120);explode(x,y,['#e2b04f','#fbf7ee'],60,7)}break;
+    case 'Four of a Kind':SFX.bomb();banner('BOM!',`Four of a Kind · ${who}`,'big');if(!rm){flash();shake();explode(x,y,FIRE,240,14)}break;
+    case 'Straight Flush':{const s=combo.key[2];SFX.sflush();banner('Straight Flush',who,'big');if(!rm){flash();shake();explode(x,y,FIRE,240,14);suitRain(SUITS[s],suitColor(s),70)}break}
+  }
+}
+
 /* ---------- state ---------- */
-let setup={n:4,names:['','','',''],triple:true,bomb:false,timer:30};
+let setup={n:4,names:['','','',''],triple:true,bomb:false,timer:30,bombWin:true,autoSkip:true,mode:'normal'};
 try{const s=JSON.parse(localStorage.getItem('capsa-setup')||'null');if(s)Object.assign(setup,s)}catch(e){}
 let G=null, showRules=false, confirmReset=false;
 
 function newGame(){
   const n=setup.n;
-  G={n,opts:{triple:setup.triple,bomb:setup.bomb,timer:setup.timer},round:0,lastWinner:null,sortMode:'rank',
+  G={n,opts:{triple:setup.triple,bomb:setup.bomb,timer:setup.timer,bombWin:setup.bombWin,autoSkip:setup.autoSkip,mode:setup.mode},round:0,lastWinner:null,sortMode:'rank',
      players:Array.from({length:n},(_,i)=>({name:(setup.names[i]||'').trim()||`Pemain ${i+1}`,hand:[],score:0,last:''}))};
   try{localStorage.setItem('capsa-setup',JSON.stringify(setup))}catch(e){}
   startRound();
 }
 function log(t){G.log.unshift(t);G.log=G.log.slice(0,7)}
 function startRound(){
-  const deck=shuffle([...Array(52).keys()]);
-  G.players.forEach((p,i)=>{p.hand=deck.slice(i*13,i*13+13);p.last=''});
+  let hands=G.opts.mode==='mayhem'?dealMayhem(G.n):null;
+  if(!hands){const deck=shuffle([...Array(52).keys()]);hands=G.players.map((_,i)=>deck.slice(i*13,i*13+13))}
+  G.players.forEach((p,i)=>{p.hand=hands[i];p.last=''});
   G.round++;G.table=null;G.sel=new Set();G.log=[];G.result=null;G.err='';
   let starter=0,must=null;
   if(G.lastWinner==null){
@@ -299,10 +450,21 @@ function doPlay(){
   const p=G.players[G.turn], cards=[...G.sel];
   p.hand=p.hand.filter(c=>!G.sel.has(c));
   G.table={cards:sortHand(cards,'rank'),combo:r.combo,by:G.turn};
-  p.last=r.combo.name;G.must=null;G.sel=new Set();
+  p.last=r.combo.name;G.must=null;G.sel=new Set();G.hint=null;
   log(`${p.name}: ${r.combo.name} ${G.table.cards.map(label).join(' ')}`);
-  if(!p.hand.length) return endRound(G.turn);
+  SFX.card();comboFx(r.combo,p.name);
+  if(r.combo.cat>=4&&G.opts.bombWin){log(`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
+  if(!p.hand.length) return endRound(G.turn,'habis');
+  if(G.opts.autoSkip&&nobodyCanAnswer()){
+    G.table=null;G.players.forEach(q=>q.last='');
+    log(`Gak ada yang bisa lawan. ${p.name} jalan lagi`);
+    setTimeout(()=>{banner('Gak ada yang bisa lawan!',`${p.name} jalan lagi`,'skip');SFX.skip()},r.combo.size>=3?950:200);
+    reveal();render();return;
+  }
   advance();
+}
+function nobodyCanAnswer(){
+  return G.players.every((q,i)=>i===G.turn||findPlays(q.hand,G.table,null,G.opts).length===0);
 }
 function doPass(){
   if(!G.table) return;
@@ -317,7 +479,7 @@ function advance(){
   G.turn=t;G.phase='handoff';G.hint=null;G.deadline=null;render();
 }
 function reveal(){
-  G.phase='turn';G.hint=null;
+  G.phase='turn';G.hint=null;G.lastTick=null;
   G.deadline=G.opts.timer?Date.now()+G.opts.timer*1000:null;
 }
 function timeout(){
@@ -342,11 +504,15 @@ setInterval(()=>{
   if(left<=0) return timeout();
   const el=document.getElementById('tmr'); if(!el) return;
   const s=Math.ceil(left/1000);
+  if(s<=5&&s!==G.lastTick){G.lastTick=s;SFX.tick()}
   el.querySelector('b').textContent=s;
   el.querySelector('.bar span').style.width=(left/(G.opts.timer*10))+'%';
   el.classList.toggle('low',s<=10);
 },200);
-function endRound(w){
+function endRound(w,how){
+  G.winHow=how;G.deadline=null;
+  const nm=G.players[w].name;
+  setTimeout(()=>{SFX.win();if(!RM.matches)confetti(170);banner(`${nm} menang!`,how==='bomb'?'Pakai bom':'Kartu habis')},how==='bomb'?1500:250);
   let total=0;
   G.result=G.players.map((p,i)=>{
     if(i===w) return {c:0,m:1,pen:0};
@@ -379,7 +545,10 @@ function rulesHTML(){
     <li>Kalau semua pass, yang terakhir buang bebas buka kombinasi baru.</li>
     ${!G||G.opts.timer?`<li><b>Timer ${G?G.opts.timer:setup.timer||30} detik</b> mulai pas kartu dibuka. Waktu habis: otomatis Pass, atau kalau lagi buka meja, otomatis buang kartu terkecil.</li>`:''}
     <li><b>Cepat pilih</b> nampilin semua kombinasi yang bisa lu buang sekarang. Klik sekali buat milih yang paling kecil, klik lagi buat ganti ke yang lebih gede.</li>
-    ${G&&G.opts.bomb?'<li><b>Bom aktif:</b> Four of a Kind atau Straight Flush bisa makan kartu 2 satuan.</li>':''}
+    ${(G?G.opts.bombWin:setup.bombWin)?'<li><b>Bom langsung menang:</b> yang berhasil buang Four of a Kind atau Straight Flush langsung menang ronde.</li>':''}
+    ${(G?G.opts.bomb:setup.bomb)?'<li><b>Bom bisa makan 2:</b> Four of a Kind atau Straight Flush boleh dibuang buat makan kartu 2 satuan.</li>':''}
+    ${(G?G.opts.autoSkip:setup.autoSkip)?'<li><b>Auto-skip:</b> kalau kartu lu gak bisa dilawan siapa pun, giliran langsung balik ke lu dan lu bebas buka lagi.</li>':''}
+    <li><b>Mayhem:</b> tiap pemain dapet bom, Full House, dan kartu-kartu tinggi.</li>
   </ul></div>
   <div><h3>Poin</h3><ul>
     <li>Yang habis duluan menang ronde.</li>
@@ -389,10 +558,11 @@ function rulesHTML(){
   </section>`;
 }
 function headerHTML(){
-  const meta=G?`Ronde ${G.round} · ${G.n} pemain`:'2–4 pemain · 1 laptop';
+  const meta=G?`Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`:'2–4 pemain · 1 laptop';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
     <div class="top-actions">
+      <button class="btn" data-act="sound" aria-pressed="${soundOn}">${soundOn?'Suara: nyala':'Suara: mati'}</button>
       <button class="btn" data-act="rules" aria-expanded="${showRules}">${showRules?'Tutup aturan':'Aturan'}</button>
       ${G?`<button class="btn ${confirmReset?'warn':''}" data-act="reset">${confirmReset?'Yakin? Klik lagi':'Ganti pemain'}</button>`:''}
     </div>
@@ -408,6 +578,10 @@ function setupHTML(){
       <div class="showfan" aria-hidden="true">${fan}</div>
     </div>
     <div class="panel">
+      <div><label class="lbl">Mode</label>
+        <div class="seg" role="group" aria-label="Mode">${[['normal','Normal'],['mayhem','Mayhem']].map(([k,l])=>`<button data-mode="${k}" aria-pressed="${setup.mode===k}">${l}</button>`).join('')}</div>
+        <p class="mode-desc">${setup.mode==='mayhem'?'Semua pemain dapet kartu gila: masing-masing pegang bom (Four of a Kind atau Straight Flush), Full House, dan kartu-kartu tinggi. Siapa cepat dia menang.':'Kartu dikocok biasa.'}</p>
+      </div>
       <div><label class="lbl">Jumlah pemain</label>
         <div class="seg" role="group" aria-label="Jumlah pemain">${[2,3,4].map(k=>`<button data-n="${k}" aria-pressed="${setup.n===k}">${k} orang</button>`).join('')}</div>
       </div>
@@ -417,7 +591,9 @@ function setupHTML(){
       <div><label class="lbl">Nama (urutan duduk)</label><div class="names">${names}</div></div>
       <div style="display:grid;gap:10px">
         <label class="check"><input type="checkbox" id="opt-triple" data-opt="triple" ${setup.triple?'checked':''}><span>Boleh buang Triple<small>3 kartu angka sama</small></span></label>
-        <label class="check"><input type="checkbox" id="opt-bomb" data-opt="bomb" ${setup.bomb?'checked':''}><span>Aturan bom<small>Four of a Kind / Straight Flush bisa makan kartu 2 satuan</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-bombwin" data-opt="bombWin" ${setup.bombWin?'checked':''}><span>Bom langsung menang<small>Yang buang Four of a Kind / Straight Flush langsung menang ronde</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-bomb" data-opt="bomb" ${setup.bomb?'checked':''}><span>Bom bisa makan 2<small>Four of a Kind / Straight Flush boleh dibuang buat makan kartu 2 satuan</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-skip" data-opt="autoSkip" ${setup.autoSkip?'checked':''}><span>Auto-skip<small>Kalau gak ada yang bisa lawan, giliran langsung balik ke yang buang</small></span></label>
       </div>
       <button class="btn primary" data-act="start" style="justify-self:start;padding:11px 26px">Kocok &amp; bagi kartu</button>
     </div>
@@ -463,7 +639,7 @@ function zoneHTML(){
         <td><div class="left">${i===G.lastWinner?'<span style="color:var(--muted)">habis</span>':sortHand(q.hand,'rank').map(c=>cardHTML(c)).join('')}</div></td>
         <td class="num">${i===G.lastWinner?`+${r.gain}`:`−${r.pen}${r.m>1?` <small style="color:var(--muted)">(${r.c}×${r.m})</small>`:''}`}</td>
         <td class="num"><b>${q.score>0?'+':''}${q.score}</b></td></tr>`}).join('');
-    return `<section class="zone"><div class="zone-head"><h2>Hasil ronde ${G.round}</h2></div>
+    return `<section class="zone"><div class="zone-head"><h2>Hasil ronde ${G.round}<small>${esc(G.players[G.lastWinner].name)} menang ${G.winHow==='bomb'?'pakai bom 💣':'karena kartunya habis'}</small></h2></div>
       <div class="tbl"><table class="result"><thead><tr><th>Pemain</th><th>Sisa kartu</th><th style="text-align:right">Ronde ini</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table></div>
       <div class="controls"><button class="btn primary" data-act="next">Ronde berikutnya</button><button class="btn" data-act="setup">Ganti pemain</button></div>
     </section>`;
@@ -500,7 +676,10 @@ app.addEventListener('click',e=>{
   if(act!=='reset'&&confirmReset){confirmReset=false}
   if(b.dataset.n){setup.n=+b.dataset.n;return render()}
   if(b.dataset.sort){G.sortMode=b.dataset.sort;return render()}
+  ac();
   if(b.dataset.timer!=null){setup.timer=+b.dataset.timer;return render()}
+  if(b.dataset.mode){setup.mode=b.dataset.mode;return render()}
+  if(act==='sound'){soundOn=!soundOn;try{localStorage.setItem('capsa-sound',soundOn?'1':'0')}catch(e){}if(soundOn)SFX.skip();return render()}
   if(b.dataset.card!=null){const c=+b.dataset.card;G.hint=null;G.sel.has(c)?G.sel.delete(c):G.sel.add(c);return render()}
   if(b.dataset.quick!=null){
     const g=G.plays[+b.dataset.quick]; if(!g) return;
