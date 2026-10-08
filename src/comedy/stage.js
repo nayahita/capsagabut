@@ -18,6 +18,7 @@
   function put(html, cls, ms, opts) {
     const el = document.createElement('div');
     el.className = 'cd-el ' + cls;
+    el.dataset.born = Date.now(); el.dataset.bit = curId || '';
     el.innerHTML = html;
     if (opts && opts.style) el.style.cssText = opts.style;
     layer().appendChild(el);
@@ -363,11 +364,17 @@
 
   /* ---------- player ---------- */
   const queue = [];
-  let busy = false;
+  let busy = false, curId = '';
+  // a button on a bit pressed within 1.2 s of it appearing = the table waving it away; the director listens
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('.cd-el button'); if (!b) return;
+    const el = b.closest('.cd-el'), age = Date.now() - (+el.dataset.born || 0);
+    if (age < 1200 && FX() && FX().fact) FX().fact('bit:feedback', { kind: 'dismiss', id: el.dataset.bit || '' });
+  }, true);
   async function run() {
     if (busy || !queue.length) return;
     busy = true;
-    const p = queue.shift();
+    const p = queue.shift(); curId = p.id || '';
     try {
       await sleep(p.delay || 0);
       if (p.note && window.CapsaMemory) window.CapsaMemory.note(p.note.round, p.note.name, p.note.text, p.note.w);

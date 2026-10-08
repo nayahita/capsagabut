@@ -149,6 +149,26 @@ Every line is a `chat` fact: `{ seat, name, text, target, counts, trash, predict
 Labels come from preset flags or editable keyword lists in `CONFIG.keywords`. Memory uses them for
 `noted`, `mic-dibuka`, `hening`, `ez-callback`, `surat-peringatan` (pokes) and the match report (confessions).
 
+## 5c. Identity, lore and gating (corpus v1)
+
+Blueprint: "Capsa Game-Native Comedy Corpus v1". No new layer: core facts → memory → director → stage, plus:
+
+- **src/lore.js** (loads before the comedy modules). Player ids (`pid`), profiles with aliases, and notes that outlive a
+  match: dossier (reputation counters, opening habits, pass rate, think time, moments with timestamps, legend quotes),
+  rivalry (head-to-head + biggest debt), table notes, and a ledger of bits that played. Offline: `localStorage`
+  (`capsa-lore-v1`, old `capsa-rep-v1` migrated). Online: `rooms/CODE/lore`, written by the host only, read by every phone.
+  Embarrassing moments are quotable for 24 h (`CapsaLore.quotable`), good ones for the year the room keeps its notes.
+- **Core facts added:** `thinkMs` + `cancels` on `play`/`pass`, `could` on `pass`, `dealt` on `round:end`, `pids` on
+  `game:start`/`round:start`, and new `emote`, `reveal` (show-my-hand), `match:end`, `player:leave`, `player:rejoin`.
+- **Memory signals added:** MEM_RETURNING, MEM_HABIT_BROKEN, MEM_REPEAT_MISTAKE, MEM_DITHER, MEM_WASTED_HAND,
+  MEM_UNDERDOG_HAND, MEM_RIVALRY, MEM_SPIRAL, MEM_REVEAL, MEM_REVEAL_RESOLVED, MEM_EMOTE_BACKFIRE, MEM_REJOIN.
+  Memory is keyed by pid; at `match:end` it hands a summary to `CapsaLore.commitMatch`.
+- **Director gating added:** target fatigue (2 bits on the same player within 3 rounds → skip), spiral protection
+  (5+ losses and last by 20+ → nobody piles on, unless a bit sets `kind`), busy table (3+ chats/emotes in 10 s →
+  no micro bits), table feedback (a bit's button pressed within 1.2 s lowers the odds; chat/emote right after raises
+  them), and reruns (same bit on the same player within 24 h → ×0.4). Every bit that plays is written to the ledger.
+- These signals have no bits yet: Comedy Bible v2 proposes them first.
+
 ## 6. Adding a bit
 
 ```js

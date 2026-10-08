@@ -745,8 +745,13 @@ window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardC
   broadcast:(type,data)=>fx({t:'mod',type,data}),
   view:()=>G?{phase:G.phase,round:G.round,turn:G.turn,n:G.n,names:G.players.map(p=>p.name),counts:G.players.map(p=>p.hand.length),
     scores:G.players.map(p=>p.score),table:G.table?{cards:G.table.cards,by:G.table.by,combo:G.table.combo.name}:null,
-    online:isOnline(),me:G.online?G.online.me:null,authority:!G.online||G.online.isHost,timer:G.opts.timer}
-    :{phase:NET?'lobby':'setup',online:!!NET,authority:!NET,me:null,names:[]},
+    online:isOnline(),me:G.online?G.online.me:null,authority:!G.online||G.online.isHost,timer:G.opts.timer,
+    hand:G.online&&G.players[G.online.me]?G.players[G.online.me].hand.slice():null,pids:G.pids||null,room:NET?NET.code:null}
+    :{phase:NET?'lobby':'setup',online:!!NET,authority:!NET||!!NET.isHost,me:null,names:[],room:NET?NET.code:null},
+  /* the room this phone is in (online), for modules that keep notes in it; only the host may write */
+  room:()=>NET?{code:NET.code,isHost:!!NET.isHost,uid:NET.uid,players:NET.players,
+    saveLore:(obj)=>{if(NET&&NET.isHost)return NET.room.child('lore').set(JSON.parse(JSON.stringify(obj))).catch(e=>console.warn(e))},
+    claim:(pid)=>{if(NET)return NET.room.child('players/'+NET.uid+'/claim').set(pid||null).catch(e=>console.warn(e))}}:null,
   holdTimer:(ms)=>{if(G&&G.phase==='turn'&&G.deadline&&(!G.online||G.online.isHost)){G.deadline+=ms;render()}},
   duck:(ms)=>{muteUntil=Math.max(muteUntil,Date.now()+ms)}};
 
@@ -762,11 +767,25 @@ const optsFromSetup=()=>({triple:setup.triple,bomb:setup.bomb,timer:setup.timer,
 const isOnline=()=>!!(G&&G.online);
 const myTurn=()=>!G.online||G.turn===G.online.me;
 
+/* optional module hooks (src/lore.js adds player ids); the core works the same without them */
+function HOOK(name,d){try{const h=window.CapsaHooks&&window.CapsaHooks[name];if(h)h(d)}catch(e){console.warn('[hook]',name,e)}return d}
 function newGame(){
   const n=setup.n;
-  G={n,opts:optsFromSetup(),round:0,lastWinner:null,sortMode:'rank',
+  G={n,opts:optsFromSetup(),round:0,lastWinner:null,sortMode:'rank',startedAt:Date.now(),
      players:Array.from({length:n},(_,i)=>({name:(setup.names[i]||'').trim()||`Pemain ${i+1}`,hand:[],score:0,last:''}))};
-  saveSetup();fact('game:start',{names:G.players.map(p=>p.name)});startRound();
+  saveSetup();const d=HOOK('gameStart',{names:G.players.map(p=>p.name)});G.pids=d.pids||null;
+  fact('game:start',d);startRound();
+}
+/* a match ends when the table is left (offline: Ganti pemain / reset; online: host closes the room) */
+function endMatch(reason){
+  if(!G||!G.round||(G.online&&!G.online.isHost)||G.matchEnded)return;G.matchEnded=true;
+  /* only the deciding phone needs it (it writes the notes), and online the room is about to close: handle it here */
+  playEvent({t:'fact',type:'match:end',data:{reason,rounds:G.round,names:G.players.map(p=>p.name),pids:G.pids||null,scores:G.players.map(p=>p.score),
+    startedAt:G.startedAt||null,durationMs:G.startedAt?Date.now()-G.startedAt:null}});
+}
+function dealtSummary(hand){
+  const c={};let sum=0;hand.forEach(x=>{c[rk(x)]=(c[rk(x)]||0)+1;sum+=rk(x)});
+  return {twos:c[12]||0,high:(c[11]||0)+(c[12]||0),quad:Object.values(c).some(v=>v===4),score:hand.length?Math.round(sum/hand.length/12*100):0};
 }
 function log(t){G.log.unshift(t);G.log=G.log.slice(0,7)}
 /* every sound/visual effect goes through here: played locally offline, broadcast to every phone online */
@@ -800,11 +819,13 @@ function playEvent(ev){
 function sendEmote(i,e){
   const now=Date.now();if((emoteCooldown[i]||0)>now)return;emoteCooldown[i]=now+1500;
   fx({t:'emote',seat:i,e});
+  if(G&&G.players[i])fact('emote',{seat:i,name:G.players[i].name,e});
 }
 function startRound(){
   let hands=G.opts.mode==='mayhem'?dealMayhem(G.n):null;
   if(!hands){const deck=shuffle([...Array(52).keys()]);hands=G.players.map((_,i)=>deck.slice(i*13,i*13+13))}
   G.players.forEach((p,i)=>{p.hand=hands[i];p.last=''});
+  G.dealt=G.players.map(p=>dealtSummary(p.hand));
   G.round++;G.table=null;G.sel=new Set();G.log=[];G.result=null;G.err='';G.winHow='';
   let starter=0,must=null;
   if(G.lastWinner==null){
@@ -814,7 +835,7 @@ function startRound(){
     starter=G.lastWinner;log(`${G.players[starter].name} menang ronde lalu, jalan duluan`);
   }
   G.turn=starter;G.must=must;G.hint=null;G.deadline=null;
-  fact('round:start',{round:G.round,names:G.players.map(p=>p.name),scores:G.players.map(p=>p.score),starter});
+  fact('round:start',{round:G.round,names:G.players.map(p=>p.name),pids:G.pids||null,scores:G.players.map(p=>p.score),starter});
   if(isOnline())reveal();else G.phase='handoff';
   render();
 }
@@ -836,7 +857,7 @@ function doPlay(){
   log(`${p.name}: ${r.combo.name} ${G.table.cards.map(label).join(' ')}`);
   fx({t:'combo',seat:G.turn,who:p.name,name:r.combo.name,key:r.combo.key,cards:G.table.cards});
   fact('play',{seat:G.turn,name:p.name,combo:r.combo.name,cat:r.combo.cat,size:r.combo.size,cards:G.table.cards,counts:G.players.map(q=>q.hand.length),
-    prev:prev?{combo:prev.combo.name,size:prev.combo.size,cards:prev.cards,by:prev.by}:null,t:Date.now()});
+    prev:prev?{combo:prev.combo.name,size:prev.combo.size,cards:prev.cards,by:prev.by}:null,t:Date.now(),...turnInfo()});
   if(r.combo.cat>=4&&G.opts.bombWin){log(`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
   if(!p.hand.length) return endRound(G.turn,'habis');
   if(G.opts.autoSkip&&nobodyCanAnswer()){
@@ -848,14 +869,15 @@ function doPlay(){
   }
   advance();
 }
+function turnInfo(){return {thinkMs:G.turnStart?Date.now()-G.turnStart:null,cancels:G.cancels||0}}
 function nobodyCanAnswer(){
   return G.players.every((q,i)=>i===G.turn||findPlays(q.hand,G.table,null,G.opts).length===0);
 }
 function doPass(){
   if(!G.table) return;
-  const p=G.players[G.turn],hadPlay=findPlays(p.hand,G.table,null,G.opts).length>0;
+  const p=G.players[G.turn],could=findPlays(p.hand,G.table,null,G.opts).map(g=>g.name),hadPlay=could.length>0;
   p.last='Pass';G.sel=new Set();log(`${p.name} pass`);fx({t:'pass'});
-  fact('pass',{seat:G.turn,name:p.name,timeout:false,hadPlay,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by}});advance();
+  fact('pass',{seat:G.turn,name:p.name,timeout:false,hadPlay,could,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by},...turnInfo()});advance();
 }
 function advance(){
   const t=(G.turn+1)%G.n;
@@ -868,7 +890,7 @@ function advance(){
   render();
 }
 function reveal(){
-  G.phase='turn';G.hint=null;G.lastTick=null;G.awaySince=null;
+  G.phase='turn';G.hint=null;G.lastTick=null;G.awaySince=null;G.turnStart=Date.now();G.cancels=0;
   G.deadline=G.opts.timer?Date.now()+G.opts.timer*1000:null;
 }
 function timeout(){
@@ -876,7 +898,8 @@ function timeout(){
   const p=G.players[G.turn];G.deadline=null;
   if(G.table){
     const who=G.turn;p.last='Pass';G.sel=new Set();log(`${p.name} kehabisan waktu, otomatis pass`);
-    fact('pass',{seat:who,name:p.name,timeout:true,hadPlay:findPlays(p.hand,G.table,null,G.opts).length>0,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by}});advance();
+    const could=findPlays(p.hand,G.table,null,G.opts).map(g=>g.name);
+    fact('pass',{seat:who,name:p.name,timeout:true,hadPlay:could.length>0,could,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by},...turnInfo()});advance();
     fx({t:'timeout',seat:who});
   }else{
     const c=G.must!=null?G.must:Math.min(...p.hand);
@@ -921,7 +944,7 @@ function endRound(w,how){
   });
   G.players[w].score+=total;G.result[w].gain=total;
   fact('round:end',{round:G.round,winner:w,how,names:G.players.map(p=>p.name),counts,penalties:G.result.map(r=>r.pen),
-    hands:G.players.map(p=>[...p.hand]),final:G.table?{combo:G.table.combo.name,cards:G.table.cards}:null,scoresBefore,scoresAfter:G.players.map(p=>p.score),delay:how==='bomb'?3600:1900});
+    hands:G.players.map(p=>[...p.hand]),final:G.table?{combo:G.table.combo.name,cards:G.table.cards}:null,scoresBefore,scoresAfter:G.players.map(p=>p.score),dealt:G.dealt||null,delay:how==='bomb'?3600:1900});
   G.lastWinner=w;G.phase='end';render();
 }
 function uiPlay(){
@@ -948,7 +971,7 @@ const FB_CFG={
   appId:"1:116090359197:web:aaac7dd3f1cb342b5af374"
 };
 const FB_VER='10.12.2';
-let NET=null, netMsg=null, fbPromise=null;
+let NET=null, netMsg=null, fbPromise=null, netNote='';
 const serverNow=()=>Date.now()+(NET?NET.offset:0);
 const myName=()=>(setup.myName||'').trim();
 const savedRoom=()=>{try{return localStorage.getItem('capsa-room')||''}catch(e){return ''}};
@@ -976,27 +999,41 @@ function netErrText(e){
 const genCode=()=>Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join('');
 async function createRoom(){
   const name=myName();if(!name)return setNetMsg('Isi nama lu dulu.',true);
-  saveSetup();setNetMsg('Bikin room…');
+  saveSetup();netNote='';setNetMsg('Bikin room…');
   try{
     const fb=await fbInit();let code=null;
     for(let k=0;k<8&&!code;k++){
       const c=genCode();
-      const r=await fb.db.ref('rooms/'+c+'/meta').transaction(cur=>cur===null?{host:fb.uid,status:'lobby',created:firebase.database.ServerValue.TIMESTAMP,opts:optsFromSetup()}:undefined);
+      const r=await fb.db.ref('rooms/'+c+'/meta').transaction(cur=>cur===null?{host:fb.uid,status:'lobby',created:firebase.database.ServerValue.TIMESTAMP,lastOpen:firebase.database.ServerValue.TIMESTAMP,opts:optsFromSetup()}:undefined);
       if(r.committed)code=c;
     }
     if(!code)throw new Error('Gak dapet kode room, coba lagi');
+    pruneOldRooms(fb);
     await fb.db.ref('rooms/'+code+'/players/'+fb.uid).set({name,joined:firebase.database.ServerValue.TIMESTAMP,online:true});
     enterRoom(code,fb);
   }catch(e){setNetMsg(netErrText(e),true)}
 }
+/* rooms keep their notes for a year after they were last opened; anyone creating a room sweeps a few old ones */
+const ROOM_KEEP_MS=365*24*3600*1000;
+function pruneOldRooms(fb){
+  try{fb.db.ref('rooms').orderByChild('meta/lastOpen').endAt(Date.now()+fb.offset-ROOM_KEEP_MS).limitToFirst(5).once('value')
+    .then(s=>s.forEach(c=>{const m=(c.val()||{}).meta;if(m&&m.lastOpen&&m.status==='closed')c.ref.remove().catch(()=>{})}),()=>{})}catch(e){}
+}
 async function joinRoom(code){
   code=(code||'').toUpperCase().trim();
   if(!/^[A-Z]{4}$/.test(code))return setNetMsg('Kode room harus 4 huruf.',true);
-  saveSetup();setNetMsg(`Nyambung ke room ${code}…`);
+  saveSetup();netNote='';setNetMsg(`Nyambung ke room ${code}…`);
   try{
     const fb=await fbInit(),room=fb.db.ref('rooms/'+code);
-    const meta=(await room.child('meta').once('value')).val();
+    let meta=(await room.child('meta').once('value')).val();
     if(!meta){try{localStorage.removeItem('capsa-room')}catch(e){}return setNetMsg(`Room ${code} gak ketemu. Cek lagi kodenya.`,true)}
+    if(meta.status==='closed'){
+      if(!myName())return setNetMsg('Isi nama lu dulu.',true);
+      const r=await room.child('meta').transaction(cur=>cur&&cur.status==='closed'?{...cur,host:fb.uid,status:'lobby',lastOpen:firebase.database.ServerValue.TIMESTAMP}:undefined);
+      meta=(await room.child('meta').once('value')).val();
+      if(!meta||meta.status==='closed')return setNetMsg('Gagal buka lagi room ini, coba sekali lagi.',true);
+      if(r.committed)netNote=`Room ${code} dibuka lagi. Catatan lama masih ada.`;
+    }
     const players=(await room.child('players').once('value')).val()||{};
     if(!(players[fb.uid]&&players[fb.uid].name)){
       const name=myName();
@@ -1015,8 +1052,9 @@ function enterRoom(code,fb){
   try{localStorage.setItem('capsa-room',code)}catch(e){}
   netMsg=null;G=null;picker=null;
   const on=(ref,ev,fn)=>{ref.on(ev,fn,err=>console.warn(err));NET.offs.push(()=>ref.off(ev,fn))};
-  on(room.child('meta'),'value',s=>{if(!NET)return;NET.meta=s.val();if(!NET.meta)return roomGone();NET.isHost=NET.meta.host===NET.uid;onRoomChange()});
-  on(room.child('players'),'value',s=>{if(!NET)return;NET.players=s.val()||{};render()});
+  on(room.child('meta'),'value',s=>{if(!NET)return;NET.meta=s.val();if(!NET.meta||NET.meta.status==='closed')return roomGone();NET.isHost=NET.meta.host===NET.uid;onRoomChange()});
+  on(room.child('players'),'value',s=>{if(!NET)return;const before=NET.players||{};NET.players=s.val()||{};presenceFacts(before,NET.players);render()});
+  on(room.child('lore'),'value',s=>{if(!NET)return;loreEvent(code,s.val()||{})});
   on(room.child('state'),'value',s=>{if(!NET)return;NET.state=s.val();onRoomChange()});
   on(room.child('hands/'+fb.uid),'value',s=>{if(!NET)return;NET.myHand=s.val()||[];if(!NET.isHost&&NET.meta&&NET.meta.status!=='lobby')applyState()});
   on(room.child('events').limitToLast(25),'child_added',s=>{const ev=s.val();if(NET&&ev&&typeof ev.ts==='number'&&ev.ts>=NET.joinedAt-1500)playEvent(ev)});
@@ -1028,24 +1066,37 @@ function enterRoom(code,fb){
   NET.prune=setInterval(()=>{if(NET&&NET.isHost)room.child('events').orderByChild('ts').endAt(serverNow()-20000).once('value',s=>s.forEach(c=>{c.ref.remove()}))},15000);
   render();
 }
+function loreEvent(code,data){document.dispatchEvent(new CustomEvent('capsa:lore',{detail:{code,data}}))}
+/* host only: tell the table when a player drops out or comes back mid-game */
+function presenceFacts(before,now){
+  if(!NET||!NET.isHost||!G||!G.online||!G.uids)return;
+  G.uids.forEach((u,i)=>{
+    const was=before[u]&&before[u].online!==false,is=now[u]&&now[u].online!==false;
+    if(was&&!is){G.awayAt=G.awayAt||{};G.awayAt[u]=Date.now();fact('player:leave',{seat:i,name:G.players[i].name})}
+    else if(!was&&is&&before[u]){const t=(G.awayAt||{})[u];fact('player:rejoin',{seat:i,name:G.players[i].name,awayMs:t?Date.now()-t:null})}
+  });
+}
 function detach(){
   if(!NET)return;
   NET.offs.forEach(f=>{try{f()}catch(e){}});clearInterval(NET.prune);
 }
 function leaveRoom(){
-  const n=NET;detach();NET=null;G=null;picker=null;confirmReset=false;
+  if(NET&&NET.isHost)endMatch('close');
+  const n=NET;detach();NET=null;G=null;picker=null;confirmReset=false;loreEvent(null,null);
   try{localStorage.removeItem('capsa-room')}catch(e){}
   if(n){
     const me=n.room.child('players/'+n.uid);
     me.child('online').onDisconnect().cancel();
-    if(n.isHost)n.room.remove();
+    if(n.isHost){
+      n.room.update({state:null,hands:null,actions:null,events:null,players:null,'meta/status':'closed','meta/lastOpen':firebase.database.ServerValue.TIMESTAMP}).catch(e=>console.warn(e));
+    }
     else if(n.meta&&n.meta.status==='lobby')me.remove();
     else me.child('online').set(false);
   }
   render();
 }
 function roomGone(){
-  detach();NET=null;G=null;picker=null;
+  detach();NET=null;G=null;picker=null;loreEvent(null,null);
   try{localStorage.removeItem('capsa-room')}catch(e){}
   setNetMsg('Room udah ditutup sama host.',true);
 }
@@ -1069,10 +1120,14 @@ function hostStart(){
   G={n:list.length,opts:{...optsFromSetup(),...(NET.meta.opts||{})},round:0,lastWinner:null,sortMode:'rank',uids:list.map(x=>x[0]),
      players:list.map(([,p])=>({name:p.name,hand:[],score:0,last:''})),
      online:{me:list.findIndex(x=>x[0]===NET.uid),isHost:true}};
-  NET.lastPub='';fact('game:start',{names:G.players.map(p=>p.name)});startRound();flushActions();
+  G.startedAt=Date.now();
+  const d=HOOK('gameStart',{names:G.players.map(p=>p.name),uids:G.uids,claims:G.uids.map(u=>(NET.players[u]||{}).claim||null)});
+  G.pids=d.pids||null;delete d.claims;
+  NET.room.child('meta/lastOpen').set(firebase.database.ServerValue.TIMESTAMP).catch(()=>{});
+  NET.lastPub='';fact('game:start',d);startRound();flushActions();
 }
 function hostRestore(s,hands){
-  G={n:s.n,opts:s.opts,uids:s.uids,round:s.round,lastWinner:s.lastWinner>=0?s.lastWinner:null,sortMode:'rank',
+  G={n:s.n,opts:s.opts,uids:s.uids,round:s.round,lastWinner:s.lastWinner>=0?s.lastWinner:null,sortMode:'rank',pids:s.pids||null,startedAt:s.startedAt||null,
      online:{me:s.uids.indexOf(NET.uid),isHost:true},
      players:s.names.map((name,i)=>({name,score:(s.scores||[])[i]||0,last:unLast((s.last||[])[i]),hand:hands[s.uids[i]]||[]})),
      turn:s.turn,phase:s.phase,log:s.log||[],must:s.must>=0?s.must:null,
@@ -1084,7 +1139,7 @@ function hostRestore(s,hands){
 }
 function publish(){
   if(!NET||!G||!G.online||!G.online.isHost)return;
-  const s={n:G.n,opts:G.opts,uids:G.uids,names:G.players.map(p=>p.name),scores:G.players.map(p=>p.score),
+  const s={n:G.n,opts:G.opts,uids:G.uids,pids:G.pids||false,startedAt:G.startedAt||0,names:G.players.map(p=>p.name),scores:G.players.map(p=>p.score),
     last:G.players.map(p=>p.last||'-'),counts:G.players.map(p=>p.hand.length),
     turn:G.turn,phase:G.phase,round:G.round,log:G.log,must:G.must==null?-1:G.must,
     table:G.table?{cards:G.table.cards,by:G.table.by,combo:G.table.combo}:false,
@@ -1101,14 +1156,14 @@ function applyState(){
   const prevTurn=G&&G.turn,prevPhase=G&&G.phase,prevRound=G&&G.round;
   if(!G||!G.online)G={online:{me,isHost:false},sortMode:'rank',sel:new Set(),hint:null};
   const myHand=(NET.myHand||[]).slice();
-  Object.assign(G,{n:s.n,opts:s.opts,uids:s.uids,turn:s.turn,phase:s.phase,round:s.round,log:s.log||[],
+  Object.assign(G,{n:s.n,opts:s.opts,uids:s.uids,pids:s.pids||null,turn:s.turn,phase:s.phase,round:s.round,log:s.log||[],
     must:s.must>=0?s.must:null,table:s.table?{cards:s.table.cards,by:s.table.by,combo:s.table.combo}:null,
     deadline:s.deadline?s.deadline-NET.offset:null,lastWinner:s.lastWinner>=0?s.lastWinner:null,
     winHow:s.winHow==='none'?'':s.winHow,result:s.result||null});
   G.online.me=me;
   G.players=s.names.map((name,i)=>({name,score:(s.scores||[])[i]||0,last:unLast((s.last||[])[i]),
     hand:i===me?myHand:Array((s.counts||[])[i]||0).fill(-1)}));
-  if(prevTurn!==G.turn||prevPhase!==G.phase||prevRound!==G.round){G.sel=new Set();G.hint=null;G.lastTick=null;G.pending=0}
+  if(prevTurn!==G.turn||prevPhase!==G.phase||prevRound!==G.round){G.sel=new Set();G.hint=null;G.lastTick=null;G.pending=0;G.cancels=0}
   G.sel=new Set([...G.sel].filter(c=>myHand.includes(c)));
   render();
 }
@@ -1117,6 +1172,7 @@ function handleAction(snap){
   const a=snap.val();snap.ref.remove();
   if(!a||G.phase!=='turn')return;
   const seat=G.uids.indexOf(a.uid);if(seat!==G.turn)return;
+  G.cancels=+a.cancels||0;
   if(a.type==='pass'){if(G.table)doPass();return}
   if(a.type==='play'){
     const hand=G.players[seat].hand,cards=(a.cards||[]).map(Number);
@@ -1129,7 +1185,7 @@ function flushActions(){if(!NET)return;const q=NET.actionQ;NET.actionQ=[];q.forE
 function sendAction(type){
   if(!NET||!G||G.pending&&Date.now()-G.pending<4000)return;
   const cards=type==='play'?[...G.sel]:[];
-  NET.room.child('actions').push({uid:NET.uid,type,cards:cards.length?cards:false,ts:firebase.database.ServerValue.TIMESTAMP});
+  NET.room.child('actions').push({uid:NET.uid,type,cards:cards.length?cards:false,cancels:G.cancels||0,ts:firebase.database.ServerValue.TIMESTAMP});
   G.pending=Date.now();render();setTimeout(()=>{if(G&&G.pending&&Date.now()-G.pending>=4000){G.pending=0;render()}},4100);
 }
 
@@ -1171,7 +1227,7 @@ function headerHTML(){
   let meta;
   if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v10`;
+  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v11`;
   const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
@@ -1263,6 +1319,8 @@ function lobbyHTML(){
         <ul class="plist">${list.map(([u,p])=>`<li><i class="dot ${p.online===false?'off':''}" aria-hidden="true"></i><span>${esc(p.name)}</span>${u===host?'<span class="pill play">host</span>':''}${u===me?'<span class="pill pass">lu</span>':''}${p.online===false?'<span class="pill off">offline</span>':''}</li>`).join('')}</ul>
       </div>
       <div><label class="lbl">Aturan room</label><p class="opts">${optsTxt.join(' · ')}</p></div>
+      ${netNote?`<p class="netmsg" role="status">${esc(netNote)}</p>`:''}
+      <p class="hint">Room ini nyimpen catatan pertandingan selama setahun sejak terakhir dibuka. Pakai kode yang sama biar sistem tetap kenal kalian.</p>
       ${NET.isHost?`<button class="btn primary" data-act="host-start" ${list.length<2?'disabled':''}>${list.length<2?'Nunggu minimal 2 pemain':`Mulai main (${list.length} orang)`}</button>`:'<p class="wait">Nunggu host mulai game…</p>'}
       <button class="btn" data-act="leave-room">${NET.isHost?'Tutup room':'Keluar room'}</button>
     </div>
@@ -1389,7 +1447,7 @@ app.addEventListener('click',e=>{
   if(b.dataset.soundSet){setSoundMode(b.dataset.soundSet);return render()}
   if(b.dataset.rxTest){if(window.CapsaReactions)window.CapsaReactions.test(b.dataset.rxTest);return}
   if(b.dataset.test){const t=b.dataset.test;if(t.startsWith('emote.'))SFX.emote[t.slice(6)]();else SFX[t]();return}
-  if(b.dataset.card!=null){if(!G||!myTurn())return;const c=+b.dataset.card;G.hint=null;G.sel.has(c)?G.sel.delete(c):G.sel.add(c);return render()}
+  if(b.dataset.card!=null){if(!G||!myTurn())return;const c=+b.dataset.card;G.hint=null;if(G.sel.has(c)){G.sel.delete(c);G.cancels=(G.cancels||0)+1}else G.sel.add(c);return render()}
   if(b.dataset.quick!=null){
     const g=G.plays[+b.dataset.quick]; if(!g) return;
     const idx=G.hint&&G.hint.name===g.name?(G.hint.idx+1)%g.list.length:0;
@@ -1400,13 +1458,13 @@ app.addEventListener('click',e=>{
     case 'stats':showStats=!showStats;statsAll=false;statsArm=false;break;
     case 'stats-all':statsAll=true;break;
     case 'stats-reset':if(!statsArm){statsArm=true;break}statsArm=false;if(window.CapsaStats)window.CapsaStats.reset();break;
-    case 'reset':if(!confirmReset){confirmReset=true;break}confirmReset=false;if(NET)return leaveRoom();G=null;break;
-    case 'setup':G=null;break;
+    case 'reset':if(!confirmReset){confirmReset=true;break}confirmReset=false;if(NET)return leaveRoom();endMatch('reset');G=null;break;
+    case 'setup':endMatch('setup');G=null;break;
     case 'start':return newGame();
     case 'reveal':reveal();break;
     case 'play':return uiPlay();
     case 'pass':return uiPass();
-    case 'clear':G.sel=new Set();G.hint=null;break;
+    case 'clear':if(G.sel.size)G.cancels=(G.cancels||0)+1;G.sel=new Set();G.hint=null;break;
     case 'next':if(isOnline()&&!G.online.isHost)return;return startRound();
     case 'create-room':return createRoom();
     case 'join-room':return joinRoom(setup.joinCode);
@@ -1442,6 +1500,7 @@ else if(hashCode&&savedRoom()===hashCode){joinRoom(hashCode)}
 <script src="src/reactions.config.js"></script>
 <script src="src/events.js"></script>
 <script src="src/stats.js"></script>
+<script src="src/lore.js"></script>
 <script src="src/reactions.js"></script>
 <script src="src/comedy/config.js"></script>
 <script src="src/comedy/director.js"></script>
@@ -1449,6 +1508,7 @@ else if(hashCode&&savedRoom()===hashCode){joinRoom(hashCode)}
 <script src="src/comedy/bits.js"></script>
 <script src="src/comedy/stage.js"></script>
 <script src="src/chat.js"></script>
+<script src="src/showhand.js"></script>
 <script>if("serviceWorker" in navigator&&location.protocol==="https:"){addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}</script>
 </body>
 </html>

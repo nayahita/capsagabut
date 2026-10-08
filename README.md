@@ -32,12 +32,28 @@ Nanti muncul ikon Capsa di layar HP. Dibukanya full screen tanpa address bar. Mo
 
 Kartu lu cuma kelihatan di HP lu. Emote, efek combo, dan suara muncul di semua HP. Aturan room (mode, timer, aturan bom) ikut pengaturan host pas bikin room.
 
+**Pamer kartu:** di mode online ada tombol **Pamer kartu** di samping kartu lu. Tap = semua orang lihat kartu lu 3 detik. Tahan = kelihatan selama ditahan (maks 8 detik). Abis itu ada jeda 6 detik. Sistem nyatet siapa yang pamer, jadi kalau abis pamer malah kalah, itu bakal diinget.
+
+**Room = geng lu.** Pas host klik **Tutup room**, room-nya gak dihapus, cuma ditutup. Catatan pertandingan (profil pemain, rivalitas, momen, favorit sistem) tetap disimpan di room itu selama **setahun sejak terakhir dibuka**. Minggu depan, siapa pun tinggal masukin kode yang sama, room kebuka lagi dan dia jadi host. Bikin room baru = mulai dari nol.
+
 Catatan teknis:
 - Data room disimpan di Firebase Realtime Database (project `capsuy`). HP host jadi wasit: dia yang bagi kartu, ngecek kartu yang dibuang, dan ngatur timer.
 - Kalau ada pemain yang offline pas gilirannya, setelah 8 detik dia otomatis Pass. Kalau dia lagi buka meja, otomatis buang kartu terkecil.
 - Kalau host offline, game berhenti dulu sampai host balik. Refresh halaman lalu klik **Balik ke room** buat nyambung lagi.
 - Mode online gak jalan di preview Claude karena koneksi ke server luar diblok di sana. Pakai link GitHub Pages.
+- Catatan room ada di `rooms/KODE/lore` dan cuma ditulis sama HP host. Gak perlu ubah Rules Firebase. Opsional: tambahin `".indexOn": ["meta/lastOpen"]` di level `rooms` biar pembersihan room yang udah setahun gak dibuka tetap ringan pas room-nya udah banyak.
 - Kartu tiap pemain tersimpan di database room. Orang yang ngerti teknis bisa ngintip lewat developer tools, jadi mainnya sama temen yang bisa dipercaya ya.
+
+## Profil pemain
+
+Tiap nama dihubungin ke profil, jadi sistem kenal orangnya walaupun ganti HP atau ganti tulisan nama.
+- Nama yang udah dikenal langsung nyambung. Di layar awal muncul tulisan kecil **dikenali · N match**.
+- Kalau namanya mirip profil lama (misal "Budii"), muncul pertanyaan **Ini Budi?** [Ya, gabungkan] [Orang baru]. Di mode online pertanyaan ini muncul di lobby.
+- Dua pemain gak bisa pakai nama yang sama di satu meja.
+- Profil baru baru disimpan setelah ronde pertama selesai, jadi salah ketik gak jadi profil sampah.
+- **Statistik → Profil pemain:** ganti nama, gabungkan dua profil, atau hapus catatan seseorang. Di room online cuma host yang bisa ngubah.
+- Main di satu device: catatannya disimpan di device itu. Mabar online: disimpan di room.
+- Momen memalukan cuma boleh dibahas sistem sampai **24 jam**. Lewat itu cuma jadi angka (gelar, statistik).
 
 ## Fitur bantuan
 

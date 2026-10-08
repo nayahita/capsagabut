@@ -8,13 +8,23 @@
  * Signals for the director (CapsaEvents):
  *   MEM_ONE_CARD, MEM_THREAD_TENSE, MEM_THREAD_RESOLVED, MEM_EZ_RESOLVED, MEM_BOUNTY_POSTED, MEM_BOUNTY_CLAIMED,
  *   MEM_GRUDGE_SETTLED, MEM_BIG_BEATEN, MEM_OVERKILL, MEM_PASSIVE, MEM_LEAD_TURN, MEM_BULLY, MEM_POKE,
- *   MEM_FAVORITE_SET, MEM_FAVORITE_CHANGED, MEM_SLUMP_WIN, MEM_INCIDENT, MEM_TRASH
+ *   MEM_FAVORITE_SET, MEM_FAVORITE_CHANGED, MEM_SLUMP_WIN, MEM_INCIDENT, MEM_TRASH,
+ *   corpus v1 additions: MEM_RETURNING, MEM_HABIT_BROKEN, MEM_REPEAT_MISTAKE, MEM_DITHER, MEM_WASTED_HAND,
+ *   MEM_UNDERDOG_HAND, MEM_RIVALRY, MEM_SPIRAL, MEM_REVEAL, MEM_REVEAL_RESOLVED, MEM_EMOTE_BACKFIRE, MEM_REJOIN
+ *
+ * Players are keyed by their id (pid, from src/lore.js) when there is one, so notes survive a rename.
+ * Notes that outlive the match go to CapsaLore at 'match:end'.
  */
 (function () {
   'use strict';
   const E = window.CapsaEvents;
   if (!E) return;
-  const key = (n) => String(n == null ? '' : n).trim().toLowerCase();
+  const norm = (n) => String(n == null ? '' : n).trim().replace(/\s+/g, ' ').toLowerCase();
+  let pidOf = {};                                   // normalized name → pid, for the current match
+  const key = (n) => { const k = norm(n); return pidOf[k] || k; };
+  const Lore = () => window.CapsaLore;
+  const setPids = (names, pids) => { if (!Array.isArray(pids) || !Array.isArray(names)) return; pidOf = {}; names.forEach((n, i) => { if (pids[i]) pidOf[norm(n)] = pids[i]; }); };
+  const HOT_MS = 10000, HOT_N = 3;
   const RANK = (c) => c >> 2;                       // 0 = '3' … 11 = 'A', 12 = '2'
   const sig = (type, p) => E.emit(type, p);
   const REP_KEY = 'capsa-rep-v1';
@@ -22,11 +32,14 @@
     timeouts: 0, ezLosses: 0, revenges: 0, bombWins: 0, worstLossStreak: 0, bountiesClaimed: 0 };
   const SETUP_ROUNDS = 3;
 
+  // reputation counters live in CapsaLore (per player id); without it they fall back to this device only
   let rep = (() => { try { return JSON.parse(localStorage.getItem(REP_KEY) || '{}') || {}; } catch (e) { return {}; } })();
-  const saveRep = () => { try { localStorage.setItem(REP_KEY, JSON.stringify(rep)); } catch (e) {} };
+  const usesLore = (k) => !!(Lore() && /^p_/.test(k));
+  const saveRep = () => { if (!Lore()) { try { localStorage.setItem(REP_KEY, JSON.stringify(rep)); } catch (e) {} } };
   const repRec = (n) => { const k = key(n); if (!k) return null; return (rep[k] = rep[k] || Object.assign({ name: String(n).trim() }, REP0)); };
-  const repBump = (n, f, by) => { const r = repRec(n); if (r) r[f] = (r[f] || 0) + (by == null ? 1 : by); };
-  const repMax = (n, f, v) => { const r = repRec(n); if (r && (r[f] || 0) < v) r[f] = v; };
+  const repBump = (n, f, by) => { const k = key(n); if (usesLore(k)) return Lore().bump(k, f, by); const r = repRec(n); if (r) r[f] = (r[f] || 0) + (by == null ? 1 : by); };
+  const repMax = (n, f, v) => { const k = key(n); if (usesLore(k)) return Lore().max(k, f, v); const r = repRec(n); if (r && (r[f] || 0) < v) r[f] = v; };
+  const repOf = (k) => (usesLore(k) ? Lore().counters(k) : Object.assign({}, REP0, rep[k] || {}));
   const quadRank = (hand) => { const c = {}; for (const x of hand || []) { c[RANK(x)] = (c[RANK(x)] || 0) + 1; if (c[RANK(x)] === 4) return RANK(x); } return -1; };
   const hasQuad = (hand) => quadRank(hand) >= 0;
   const label = (c) => (window.CapsaFX && window.CapsaFX.label ? window.CapsaFX.label(c) : String(c));
@@ -35,7 +48,8 @@
   function newMatch(names) {
     M = { startedAt: Date.now(), names: names || [], rounds: [], moments: [], threads: [], chats: [], grudges: [], bounty: null,
       streak: {}, wins: {}, penalty: {}, mistakes: {}, bombs: 0, sflush: 0, twosDied: 0, ezLosses: 0,
-      favorite: null, scores: {}, leads: {}, pokes: {}, setups: [], twosDiedBy: {}, lastCardBy: {} };
+      favorite: null, scores: {}, leads: {}, pokes: {}, setups: [], twosDiedBy: {}, lastCardBy: {},
+      think: {}, passStats: {}, emotes: [], hot: [], confess: {}, spiral: {}, h2h: {}, debts: [], once: {}, pids: [] };
     R = null; last = null;
   }
   newMatch([]);
@@ -43,10 +57,25 @@
     const names = d.names || M.names, n = names.length || 4;
     return { n: d.round || 0, names, start: Date.now(), counts: Array(n).fill(13), min: Array(n).fill(13), hitOne: Array(n).fill(false),
       passes: Array(n).fill(0), passPlayable: Array(n).fill(0), timeouts: Array(n).fill(0), overkills: Array(n).fill(0), plays: 0,
-      lastBig: null, beats: {}, beatBy: {}, prevAction: null, actBeforePlay: null, chatted: Array(n).fill(false) };
+      lastBig: null, beats: {}, beatBy: {}, prevAction: null, actBeforePlay: null, chatted: Array(n).fill(false),
+      revealed: {}, emoted: {}, cancels: Array(n).fill(0) };
   }
   const ensureR = (d) => { if (!R) { R = freshRound(d); R.partial = true; } };
-  const moment = (round, name, text, w, bad) => { M.moments.push({ round, name, key: key(name), text, w, bad: !!bad }); if (M.moments.length > 80) M.moments.shift(); };
+  const moment = (round, name, text, w, bad) => { M.moments.push({ round, name, key: key(name), text, w, bad: !!bad, t: Date.now() }); if (M.moments.length > 80) M.moments.shift(); };
+  const once = (k) => { if (M.once[k]) return false; M.once[k] = true; return true; };
+  const hotPing = () => { const now = Date.now(); M.hot = M.hot.filter((t) => now - t < HOT_MS); M.hot.push(now); };
+  const tableHot = () => { const now = Date.now(); return M.hot.filter((t) => now - t < HOT_MS).length >= HOT_N; };
+  // a mistake right after admitting one ("salah gua") is a callback waiting to happen
+  function mistake(seat, name, kind) {
+    const k = key(name), c = M.confess[k];
+    if (c && !c.used && (R ? R.n : 0) - c.round <= 3) { c.used = true; sig('MEM_REPEAT_MISTAKE', { seat, name, quote: c.text, kind, round: c.round }); }
+  }
+  const turnStat = (name, d) => {
+    const k = key(name), p = M.passStats[k] = M.passStats[k] || { playable: 0, turns: 0 };
+    p.turns++;
+    if (typeof d.thinkMs === 'number' && d.thinkMs >= 0 && d.thinkMs < 120000) { const t = M.think[k] = M.think[k] || { sum: 0, n: 0 }; t.sum += d.thinkMs; t.n++; }
+    return p;
+  };
   const bump = (obj, n) => { const k = key(n); obj[k] = (obj[k] || 0) + 1; };
   const names = () => (R && R.names.length ? R.names : M.names);
   const habit = (n) => { const l = M.leads[key(n)] || []; const c = {}; let best = null; l.forEach((x) => { c[x] = (c[x] || 0) + 1; if (!best || c[x] > c[best]) best = x; }); return best ? { combo: best, count: c[best], total: l.length } : null; };
@@ -57,11 +86,19 @@
   }
   const addSetup = (s) => { s.id = 's' + (++setupSeq) + ':' + s.type + ':' + key(s.name); M.setups.push(s); };
 
-  E.on('fact:game:start', (d) => newMatch(d.names));
+  E.on('fact:game:start', (d) => { newMatch(d.names); setPids(d.names, d.pids); M.pids = Array.isArray(d.pids) ? d.pids.slice() : []; });
 
   E.on('fact:round:start', (d) => {
     if (!M.names.length) M.names = d.names || [];
+    if (Array.isArray(d.pids)) { setPids(d.names || M.names, d.pids); M.pids = d.pids.slice(); }
     R = freshRound(d);
+    // first round of a match: who has history at this table
+    if ((d.round || 0) === 1 || !M.rounds.length) (d.names || []).forEach((n, i) => {
+      const k = key(n); if (!usesLore(k) || !once('ret:' + k)) return;
+      const ds = Lore().dossier(k); if (!ds || !(ds.matches > 0)) return;
+      const q = Lore().quotable(k).slice(-1)[0] || null;
+      sig('MEM_RETURNING', { seat: i, name: n, matches: ds.matches, title: title(n), moment: q });
+    });
     M.threads.forEach((t) => { if (t.state === 'tense') t.state = 'open'; });
     M.setups = M.setups.filter((s) => (d.round || 0) - s.round <= SETUP_ROUNDS);
     if (d.starter != null) leadTurn(d.starter);
@@ -72,7 +109,17 @@
     if (Array.isArray(d.counts)) { R.counts = d.counts.slice(); d.counts.forEach((c, i) => { R.min[i] = Math.min(R.min[i] == null ? 13 : R.min[i], c); }); }
     const me = d.seat, nm = d.name, left = R.counts[me];
     R.actBeforePlay = R.prevAction; R.prevAction = { type: 'play', seat: me };
-    if (!d.prev) { const k = key(nm); (M.leads[k] = M.leads[k] || []).push(d.combo); }
+    turnStat(nm, d); R.cancels[me] = (R.cancels[me] || 0) + (d.cancels || 0);
+    if (!d.prev) {
+      const k = key(nm); (M.leads[k] = M.leads[k] || []).push(d.combo);
+      // a long-standing opening habit (across matches) suddenly broken
+      if (usesLore(k)) {
+        const lead = (Lore().dossier(k) || {}).lead || {}, tot = Object.values(lead).reduce((a, b) => a + b, 0);
+        const top = Object.entries(lead).sort((a, b) => b[1] - a[1])[0];
+        if (top && tot >= 6 && top[1] / tot >= 0.6 && d.combo !== top[0] && once('habit:' + k))
+          sig('MEM_HABIT_BROKEN', { seat: me, name: nm, habit: top[0], share: Math.round((top[1] / tot) * 100), now: d.combo });
+      }
+    }
     if (d.prev && d.prev.by !== me) {
       const pk = me + '>' + d.prev.by; R.beats[pk] = (R.beats[pk] || 0) + 1;
       (R.beatBy[me] = R.beatBy[me] || {})[d.prev.by] = true;
@@ -92,6 +139,7 @@
     if (d.size === 1 && d.prev && d.prev.size === 1 && d.cards && RANK(d.cards[0]) === 12 && RANK(d.prev.cards[0]) <= 4) {
       R.overkills[me]++; bump(M.mistakes, nm);
       sig('MEM_OVERKILL', { seat: me, name: nm, card: d.cards[0], against: d.prev.cards[0], victim: R.names[d.prev.by] });
+      mistake(me, nm, 'overkill');
     }
     if (d.cat >= 4) { M.bombs++; if (d.cat === 5) M.sflush++; }
   });
@@ -103,11 +151,16 @@
     const me = d.seat;
     R.passes[me] = (R.passes[me] || 0) + 1;
     R.prevAction = { type: 'pass', seat: me, hadPlay: !!d.hadPlay };
-    if (d.timeout) { R.timeouts[me]++; repBump(d.name, 'timeouts'); moment(R.n, d.name, 'timeout', 5, true); }
+    const ps = turnStat(d.name, d);
+    if (d.timeout) { R.timeouts[me]++; repBump(d.name, 'timeouts'); moment(R.n, d.name, 'timeout', 5, true); mistake(me, d.name, 'timeout'); }
     if (d.hadPlay) {
-      R.passPlayable[me]++; bump(M.mistakes, d.name); repBump(d.name, 'passivePasses');
+      R.passPlayable[me]++; ps.playable++; bump(M.mistakes, d.name); repBump(d.name, 'passivePasses');
       if (R.passPlayable[me] === 3) sig('MEM_PASSIVE', { seat: me, name: d.name, count: 3 });
+      mistake(me, d.name, 'passive');
     }
+    // long think and/or picking-and-cancelling, then a pass
+    if (!d.timeout && ((d.thinkMs || 0) >= 20000 || (d.cancels || 0) >= 2))
+      sig('MEM_DITHER', { seat: me, name: d.name, secs: Math.round((d.thinkMs || 0) / 1000), cancels: d.cancels || 0, could: d.could || [] });
     const n = names().length;
     if (d.table && n && (me + 1) % n === d.table.by) leadTurn(d.table.by);
   });
@@ -118,7 +171,8 @@
       target: d.target, t: Date.now(), round: R ? R.n : 0, held: Array.isArray(d.counts) ? d.counts[d.seat] : null };
     M.chats.push(c); if (M.chats.length > 60) M.chats.shift();
     if (R && d.seat != null) R.chatted[d.seat] = R.chatted[d.seat] || trash;
-    if (d.confession) moment(c.round, d.name, `"${d.text}"`, 5, true);
+    hotPing();
+    if (d.confession) { moment(c.round, d.name, `"${d.text}"`, 5, true); M.confess[c.key] = { text: d.text, round: c.round }; }
     if (trash) sig('MEM_TRASH', { seat: d.seat, name: d.name, text: d.text, held: c.held, prediction: c.prediction });
     if (d.target != null && d.target !== d.seat) {
       const pk = key(d.name) + '>' + key(names()[d.target]);
@@ -126,6 +180,23 @@
       if (M.pokes[pk] === 2) sig('MEM_POKE', { seat: d.seat, name: d.name, victimSeat: d.target, victim: names()[d.target] });
     }
   });
+
+  E.on('fact:emote', (d) => {
+    hotPing();
+    M.emotes.push({ seat: d.seat, name: d.name, key: key(d.name), e: d.e, t: Date.now(), round: R ? R.n : 0 });
+    if (M.emotes.length > 60) M.emotes.shift();
+    if (R && d.seat != null) R.emoted[d.seat] = d.e;
+  });
+  // show-my-hand (online taunt)
+  E.on('fact:reveal', (d) => {
+    ensureR(d);
+    if (d.seat == null) return;
+    const first = !R.revealed[d.seat];
+    R.revealed[d.seat] = { t: Date.now(), count: d.count, cards: d.cards || [] };
+    if (first) sig('MEM_REVEAL', { seat: d.seat, name: d.name, count: d.count, cards: d.cards || [] });
+  });
+  E.on('fact:player:leave', (d) => { if (R) (R.away = R.away || {})[d.seat] = Date.now(); });
+  E.on('fact:player:rejoin', (d) => { sig('MEM_REJOIN', { seat: d.seat, name: d.name, awayMs: d.awayMs, plays: R ? R.plays : 0 }); });
 
   E.on('fact:round:end', (d) => {
     ensureR(d);
@@ -154,7 +225,7 @@
     if (bw.loss >= 2 || lastCardPrev) sig('MEM_SLUMP_WIN', { seat: w, name: wName, prevLoss: bw.loss, lastCardPrev: !!lastCardPrev });
 
     // reputation, incidents, delayed setups
-    const badBefore = {};
+    const badBefore = {}, twosDiedNow = [];
     nm.forEach((n) => { badBefore[key(n)] = M.moments.filter((m) => m.bad && m.key === key(n)).length; });
     nm.forEach((n, i) => {
       repBump(n, 'rounds');
@@ -167,6 +238,7 @@
       }
       if (left > 0 && left <= 2) repBump(n, 'badBeats');
       const twos = hand.filter((c) => RANK(c) === 12);
+      if (twos.length) twosDiedNow.push({ i, n });
       if (twos.length >= 2) { repBump(n, 'hoards'); M.twosDied += twos.length; M.twosDiedBy[key(n)] = (M.twosDiedBy[key(n)] || 0) + 1; }
       if (twos.length && R.passPlayable[i] > 0) addSetup({ type: 'prasasti', name: n, round: d.round, cards: twos });
       if (twos.length >= 2) moment(d.round, n, `mati megang ${twos.map(label).join(' ')}`, 5, true);
@@ -200,7 +272,7 @@
     Object.values(said).forEach((c) => {
       const i = nm.findIndex((x) => key(x) === c.key);
       if (i < 0) return;
-      M.chats.forEach((o) => { if (o.key === c.key && o.trash) o.resolved = true; });
+      M.chats.forEach((o) => { if (o.key === c.key && o.trash) { o.resolved = true; if (i !== w) o.lost = true; } });
       const outcome = i === w ? 'won' : 'lost';
       if (outcome === 'lost') {
         M.ezLosses++; repBump(nm[i], 'ezLosses'); moment(d.round, nm[i], `"${c.text}"`, 8, true);
@@ -262,12 +334,68 @@
       if (badBefore[key(n)] < 3 && bad.length >= 3) sig('MEM_INCIDENT', { seat: i, name: n, lines: bad.slice(0, 3).map((m) => `R${m.round} · ${m.text}`) });
     });
 
+    // dealt hand vs result
+    if (Array.isArray(d.dealt)) nm.forEach((n, i) => {
+      const h = d.dealt[i]; if (!h) return;
+      if (i !== w && (h.score >= 62 || h.twos >= 2 || h.quad) && d.counts[i] >= 6) sig('MEM_WASTED_HAND', { seat: i, name: n, dealt: h, left: d.counts[i] });
+      if (i === w && h.score <= 35 && !h.twos && !h.quad) sig('MEM_UNDERDOG_HAND', { seat: i, name: n, dealt: h });
+    });
+    // shown cards, laughing emotes: did it age well?
+    Object.entries(R.revealed || {}).forEach(([s, r]) => {
+      const i = +s, outcome = i === w ? 'won' : 'lost';
+      if (outcome === 'lost') { moment(d.round, nm[i], 'pamer kartu, terus kalah', 7, true); addSetup({ type: 'revealLost', name: nm[i], round: d.round, cards: r.cards, cardsLeft: d.counts[i] }); }
+      sig('MEM_REVEAL_RESOLVED', { seat: i, name: nm[i], outcome, cards: r.cards, cardsLeft: d.counts[i], secs: Math.max(1, Math.round((now - r.t) / 1000)) });
+    });
+    Object.entries(R.emoted || {}).forEach(([s, e]) => {
+      const i = +s; if (i === w || !['laugh', 'cool'].includes(e) || d.counts[i] < 5) return;
+      sig('MEM_EMOTE_BACKFIRE', { seat: i, name: nm[i], emote: e, cardsLeft: d.counts[i] });
+    });
+    // head-to-head, this match (added to the lore at match:end)
+    nm.forEach((n, i) => { if (i === w) return; const kk = [key(wName), key(n)].sort().join('|'); const h = M.h2h[kk] = M.h2h[kk] || {}; h[key(wName)] = (h[key(wName)] || 0) + 1; });
+    const big = nm.map((n, i) => ({ n, i, pen: row.penalties[i] || 0 })).filter((x) => x.i !== w).sort((a, b) => b.pen - a.pen)[0];
+    if (big) {
+      if (big.pen >= 10) M.debts.push({ by: key(wName), victim: key(big.n), pen: big.pen, t: now });
+      const a = key(wName), b = key(big.n), kk = [a, b].sort().join('|');
+      const life = usesLore(a) && usesLore(b) ? Lore().h2h(a, b) : { a: 0, b: 0 };
+      const mine = M.h2h[kk] || {}, wa = life.a + (mine[a] || 0), wb = life.b + (mine[b] || 0);
+      if (wa + wb >= 8 && Math.abs(wa - wb) <= Math.max(2, (wa + wb) * 0.3) && once('riv:' + kk))
+        sig('MEM_RIVALRY', { seat: w, name: wName, rivalSeat: big.i, rival: big.n, wins: wa, losses: wb });
+    }
+    // somebody is really going under: the director stops piling on
+    nm.forEach((n, i) => {
+      const k = key(n), sa = d.scoresAfter || [];
+      if (i === w) { delete M.spiral[k]; return; }
+      const others = sa.filter((_, j) => j !== i), next = others.length ? Math.min(...others) : 0;
+      if ((M.streak[k] || {}).loss >= 5 && sa[i] === Math.min(...sa) && next - sa[i] >= 20 && !M.spiral[k]) {
+        M.spiral[k] = true; sig('MEM_SPIRAL', { seat: i, name: n, loss: M.streak[k].loss, gap: next - sa[i] });
+      }
+    });
+    if (twosDiedNow.length) twosDiedNow.forEach((x) => mistake(x.i, x.n, 'hoard'));
+
     saveRep(); R = null;
   });
 
+  // the match is over: hand what is worth keeping to CapsaLore
+  E.on('fact:match:end', (d) => {
+    if (!Lore() || !M.rounds.length) return;
+    const names = d.names || M.names, pids = (Array.isArray(d.pids) ? d.pids : names.map((n) => key(n))).filter(Boolean);
+    const only = (obj) => { const o = {}; Object.entries(obj).forEach(([k, v]) => { if (/^p_/.test(k)) o[k] = v; }); return o; };
+    const leads = {}; Object.entries(M.leads).forEach(([k, l]) => { if (!/^p_/.test(k)) return; const c = leads[k] = {}; l.forEach((x) => { c[x] = (c[x] || 0) + 1; }); });
+    const legends = M.chats.filter((c) => c.trash && c.lost && /^p_/.test(c.key)).map((c) => ({ pid: c.key, name: c.name, text: c.text, t: c.t }));
+    Lore().commitMatch({
+      pids: pids.filter((p) => /^p_/.test(p)), names, rounds: M.rounds.length,
+      moments: M.moments.filter((m) => /^p_/.test(m.key) && m.w >= 5).map((m) => ({ pid: m.key, round: m.round, text: m.text, w: m.w, bad: m.bad, t: m.t })),
+      legends, leads, passes: only(M.passStats), think: only(M.think),
+      h2h: Object.fromEntries(Object.entries(M.h2h).filter(([k]) => k.split('|').every((x) => /^p_/.test(x)))),
+      debts: M.debts.filter((x) => /^p_/.test(x.by) && /^p_/.test(x.victim)),
+      favorite: M.favorite && /^p_/.test(M.favorite.key) ? { pid: M.favorite.key, name: M.favorite.name } : null,
+    });
+  });
+
   /* ---------- read API ---------- */
-  function title(n) {
-    const r = Object.assign({}, REP0, rep[key(n)] || {}), wr = r.rounds ? r.wins / r.rounds : 0;
+  function title(n) { return titleOf(key(n)); }
+  function titleOf(k) {
+    const r = repOf(k), wr = r.rounds ? r.wins / r.rounds : 0;
     const rules = [
       [r.ezLosses >= 2, 'Mulut Duluan'], [r.sealed >= 1, 'Penjaga Segel'], [r.lastCardLosses >= 2, 'Spesialis Nyaris'],
       [r.hoards >= 2, 'Kolektor Kartu 2'], [r.bombDeaths >= 1, 'Pemilik Bom Tak Terpakai'], [r.timeouts >= 3, 'AFK Profesional'],
@@ -306,8 +434,9 @@
   window.CapsaMemory = {
     key, match: () => M, round: () => R, lastRound: () => last,
     streak: (n) => M.streak[key(n)] || { win: 0, loss: 0 },
-    rep: (n) => Object.assign({}, REP0, rep[key(n)] || {}),
-    title, target, hasQuad, habit, lore,
+    rep: (n) => repOf(key(n)),
+    title, titleOf, target, hasQuad, habit, lore,
+    spiral: (n) => !!M.spiral[key(n)], tableHot, pidOf: (n) => key(n),
     favorite: () => M.favorite,
     setups: (type) => M.setups.filter((s) => !type || s.type === type),
     scoresOf: (n) => (M.scores[key(n)] || []).slice(),
