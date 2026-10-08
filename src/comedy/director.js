@@ -13,10 +13,12 @@
   const S = C.settings;
   const RANK = { COMMON: 1, UNCOMMON: 2, RARE: 3, LEGENDARY: 4 };
   const PAYOFF = /CALLBACK|REVENGE/;
-  const ZERO_NEXT = ['freeze', 'silence', 'sound', 'effect', 'rarity'];
+  const ZERO_NEXT = ['freeze', 'silence', 'sound', 'effect', 'rarity', 'dim', 'ribbon', 'tag', 'predict', 'approve', 'scoreSwap'];  // these run alongside the next step
   const nextOf = (s) => (s.next != null ? s.next : ZERO_NEXT.includes(s.do) ? 0 : s.ms || 0);
   const bits = [];
-  const st = { last: 0, recent: [], perRound: 0, quiet: 0, bitLast: {}, used: new Set(), modeLast: {}, log: [] };
+  const st = { lastW: { micro: 0, stage: 0 }, recent: [], perRound: { micro: 0, stage: 0 }, quiet: 0, legendary: 0, bitLast: {}, used: new Set(), usedKeys: new Set(), modeLast: {}, log: [] };
+  const B8 = () => Object.assign({ micro: { perRound: 2, gapMs: 8000 }, stage: { perRound: 1, gapMs: 20000 } }, S.budget || {});
+  const weightOf = (bit) => (bit.weight === 'micro' ? 'micro' : 'stage');
   const log = (...a) => { st.log.push(a.join(' ')); if (st.log.length > 80) st.log.shift(); if (S.debug) console.log('[comedy]', ...a); };
 
   /* one "moment" per fact: everything emitted while that fact is processed lands in it */
@@ -41,8 +43,8 @@
     num: (x) => Number(x).toLocaleString('id-ID') };
 
   function evaluate(m) {
-    if (m.fact === 'game:start') { st.perRound = 0; st.quiet = 0; st.used.clear(); st.bitLast = {}; return; }
-    if (m.fact === 'round:start') st.perRound = 0;
+    if (m.fact === 'game:start') { st.perRound = { micro: 0, stage: 0 }; st.quiet = 0; st.legendary = 0; st.used.clear(); st.usedKeys.clear(); st.bitLast = {}; return; }
+    if (m.fact === 'round:start') st.perRound = { micro: 0, stage: 0 };
     if (!S.enabled || !authority()) return;
     const B = moment(m), now = B.now, cands = [];
     for (const bit of bits) {
@@ -50,6 +52,7 @@
       if (bit.oncePerMatch && st.used.has(bit.id)) continue;
       if (bit.cooldownMs && now - (st.bitLast[bit.id] || -1e12) < bit.cooldownMs) continue;
       let v; try { v = bit.when(B); } catch (e) { log('when() error', bit.id, e.message); continue; }
+      if (v && v.once && st.usedKeys.has(v.once)) continue;
       if (v) cands.push({ bit, v: v === true ? {} : v });
     }
     // Effective chance first, then order: payoffs of memory (callbacks, revenge) first, then rarer bits,
@@ -69,9 +72,10 @@
     cands.sort((a, b) => pay(b) - pay(a) || RANK[b.bit.rarity] - RANK[a.bit.rarity] || b.p - a.p || Math.random() - 0.5);
     let chosen = null;
     for (const c of cands) {
-      const r = c.bit.rarity, legendary = r === 'LEGENDARY';
-      if (!legendary && st.perRound >= S.maxPerRound) { log('skip (round cap)', c.bit.id); continue; }
-      if (RANK[r] < 3 && now - st.last < S.minGapMs) { log('skip (gap)', c.bit.id); continue; }
+      const r = c.bit.rarity, legendary = r === 'LEGENDARY', w = weightOf(c.bit), b = B8()[w];
+      if (legendary && !c.bit.legendaryExempt && st.legendary >= (S.legendaryPerMatch || 1)) { log('skip (legendary cap)', c.bit.id); continue; }
+      if (!legendary && st.perRound[w] >= b.perRound) { log(`skip (${w} round cap)`, c.bit.id); continue; }
+      if (!legendary && RANK[r] < 3 && now - st.lastW[w] < b.gapMs) { log(`skip (${w} gap)`, c.bit.id); continue; }
       const roll = Math.random();
       log(`${m.fact} → ${c.bit.id} [${r} · ${c.bit.mode}] p=${c.p.toFixed(2)} roll=${roll.toFixed(2)}`);
       if (roll < c.p) { chosen = c; break; }
@@ -81,7 +85,7 @@
     // Payoffs and legendary moments never swallow each other: the other one plays right after.
     if (chosen) {
       const want = chosen.bit.rarity === 'LEGENDARY' ? (c) => PAYOFF.test(c.bit.mode) : (c) => c.bit.rarity === 'LEGENDARY';
-      const extra = cands.find((c) => c !== chosen && want(c) && Math.random() < c.p);
+      const extra = cands.find((c) => c !== chosen && want(c) && (c.bit.rarity !== 'LEGENDARY' || st.legendary < (S.legendaryPerMatch || 1)) && Math.random() < c.p);
       if (extra) { log('PLUS', extra.bit.id); perform(extra, B, false); }
     }
   }
@@ -89,15 +93,20 @@
   function build(c, B) {
     const steps = c.bit.script(c.v, B, helpers) || [];
     const delay = (B.fact === 'round:end' ? (B.d.delay != null ? B.d.delay : 1900) : 0) + (c.bit.delay || 0);
-    return { id: c.bit.id, mode: c.bit.mode, rarity: c.bit.rarity, delay, steps };
+    const perf = { id: c.bit.id, mode: c.bit.mode, rarity: c.bit.rarity, weight: weightOf(c.bit), delay, steps };
+    if (c.bit.note) perf.note = c.bit.note(c.v, B);
+    return perf;
   }
   function perform(c, B, local) {
     let perf;
     try { perf = build(c, B); } catch (e) { log('script() error', c.bit.id, e.message); return null; }
     if (!local) {
       const now = Date.now();
-      st.last = now + perf.delay; st.recent.push(now); st.perRound++; st.bitLast[c.bit.id] = now; st.modeLast[c.bit.mode] = now;
+      const w = weightOf(c.bit);
+      st.lastW[w] = now + perf.delay; st.recent.push(now); st.perRound[w]++; st.bitLast[c.bit.id] = now; st.modeLast[c.bit.mode] = now;
       if (c.bit.oncePerMatch) st.used.add(c.bit.id);
+      if (c.v && c.v.once) st.usedKeys.add(c.v.once);
+      if (c.bit.rarity === 'LEGENDARY' && !c.bit.legendaryExempt) st.legendary++;
       const total = perf.steps.reduce((a, s) => a + nextOf(s), 0);
       if (perf.steps.some((s) => s.do === 'freeze' || s.block) && window.CapsaFX) window.CapsaFX.holdTimer(perf.delay + total + 600);
       log('PLAY', perf.id);

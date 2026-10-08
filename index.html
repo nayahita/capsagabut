@@ -744,6 +744,7 @@ window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardC
   fact:(type,data)=>fact(type,data),
   broadcast:(type,data)=>fx({t:'mod',type,data}),
   view:()=>G?{phase:G.phase,round:G.round,turn:G.turn,n:G.n,names:G.players.map(p=>p.name),counts:G.players.map(p=>p.hand.length),
+    scores:G.players.map(p=>p.score),table:G.table?{cards:G.table.cards,by:G.table.by,combo:G.table.combo.name}:null,
     online:isOnline(),me:G.online?G.online.me:null,authority:!G.online||G.online.isHost,timer:G.opts.timer}
     :{phase:NET?'lobby':'setup',online:!!NET,authority:!NET,me:null,names:[]},
   holdTimer:(ms)=>{if(G&&G.phase==='turn'&&G.deadline&&(!G.online||G.online.isHost)){G.deadline+=ms;render()}},
@@ -1170,7 +1171,7 @@ function headerHTML(){
   let meta;
   if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v9`;
+  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v10`;
   const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>

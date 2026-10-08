@@ -1,6 +1,6 @@
 // Offline support. Game files are fetched fresh when online (so updates show up right away)
 // and served from the cache when offline.
-const CACHE = 'capsa-v9';
+const CACHE = 'capsa-v10';
 const CORE = [
   './', './index.html', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-maskable.png', './apple-touch-icon.png',
@@ -8,7 +8,7 @@ const CORE = [
   './src/comedy/config.js', './src/comedy/director.js', './src/comedy/memory.js', './src/comedy/bits.js', './src/comedy/stage.js', './src/chat.js',
   './audio/win.wav', './audio/lose.wav', './audio/bad-beat.wav', './audio/comeback.wav', './audio/win-streak.wav',
   './audio/loss-streak.wav', './audio/upset.wav', './audio/perfect.wav', './audio/revenge.wav',
-  './audio/comedy/notify.wav', './audio/comedy/tape-stop.wav', './audio/comedy/typing.wav', './audio/comedy/drumroll.wav', './audio/comedy/stamp.wav', './audio/comedy/glitch.wav', './audio/comedy/kazoo.wav', './audio/comedy/deflate.wav', './audio/comedy/heartbeat.wav', './audio/comedy/register.wav', './audio/comedy/gavel.wav', './audio/comedy/error.wav', './audio/comedy/whoosh.wav',
+  './audio/comedy/notify.wav', './audio/comedy/tape-stop.wav', './audio/comedy/typing.wav', './audio/comedy/drumroll.wav', './audio/comedy/stamp.wav', './audio/comedy/glitch.wav', './audio/comedy/kazoo.wav', './audio/comedy/deflate.wav', './audio/comedy/heartbeat.wav', './audio/comedy/register.wav', './audio/comedy/gavel.wav', './audio/comedy/error.wav', './audio/comedy/whoosh.wav', './audio/comedy/memorial.wav', './audio/comedy/cctv-hum.wav', './audio/comedy/credits.wav',
 ];
 
 self.addEventListener('install', (e) => {

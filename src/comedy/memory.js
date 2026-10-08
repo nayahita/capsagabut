@@ -1,12 +1,14 @@
 /*
  * Comedy memory. Runs on every phone and only reacts to facts, so every phone ends up with the same memory.
  *
- * Keeps: the match log, notable moments (for the roast summary), callback threads, grudges,
- * a bounty, streaks, and a persistent reputation per player name (localStorage) that feeds titles.
+ * Keeps the match log, notable moments, callback threads, grudges, a bounty, streaks, the system's
+ * "favorite", score history, opening habits, who beats whom, chat pokes, delayed setups, incidents,
+ * and a persistent reputation per player name (localStorage) that feeds titles.
  *
- * Emits signals for the director through CapsaEvents:
- *   MEM_ONE_CARD, MEM_THREAD_TENSE, MEM_THREAD_RESOLVED, MEM_EZ_RESOLVED, MEM_BOUNTY_POSTED,
- *   MEM_BOUNTY_CLAIMED, MEM_GRUDGE_SETTLED, MEM_BIG_BEATEN, MEM_OVERKILL, MEM_PASSIVE
+ * Signals for the director (CapsaEvents):
+ *   MEM_ONE_CARD, MEM_THREAD_TENSE, MEM_THREAD_RESOLVED, MEM_EZ_RESOLVED, MEM_BOUNTY_POSTED, MEM_BOUNTY_CLAIMED,
+ *   MEM_GRUDGE_SETTLED, MEM_BIG_BEATEN, MEM_OVERKILL, MEM_PASSIVE, MEM_LEAD_TURN, MEM_BULLY, MEM_POKE,
+ *   MEM_FAVORITE_SET, MEM_FAVORITE_CHANGED, MEM_SLUMP_WIN, MEM_INCIDENT, MEM_TRASH
  */
 (function () {
   'use strict';
@@ -18,29 +20,42 @@
   const REP_KEY = 'capsa-rep-v1';
   const REP0 = { rounds: 0, wins: 0, lastCardLosses: 0, badBeats: 0, hoards: 0, bombDeaths: 0, sealed: 0, passivePasses: 0,
     timeouts: 0, ezLosses: 0, revenges: 0, bombWins: 0, worstLossStreak: 0, bountiesClaimed: 0 };
+  const SETUP_ROUNDS = 3;
 
   let rep = (() => { try { return JSON.parse(localStorage.getItem(REP_KEY) || '{}') || {}; } catch (e) { return {}; } })();
   const saveRep = () => { try { localStorage.setItem(REP_KEY, JSON.stringify(rep)); } catch (e) {} };
   const repRec = (n) => { const k = key(n); if (!k) return null; return (rep[k] = rep[k] || Object.assign({ name: String(n).trim() }, REP0)); };
   const repBump = (n, f, by) => { const r = repRec(n); if (r) r[f] = (r[f] || 0) + (by == null ? 1 : by); };
   const repMax = (n, f, v) => { const r = repRec(n); if (r && (r[f] || 0) < v) r[f] = v; };
-  const hasQuad = (hand) => { const c = {}; for (const x of hand || []) { c[RANK(x)] = (c[RANK(x)] || 0) + 1; if (c[RANK(x)] === 4) return true; } return false; };
+  const quadRank = (hand) => { const c = {}; for (const x of hand || []) { c[RANK(x)] = (c[RANK(x)] || 0) + 1; if (c[RANK(x)] === 4) return RANK(x); } return -1; };
+  const hasQuad = (hand) => quadRank(hand) >= 0;
+  const label = (c) => (window.CapsaFX && window.CapsaFX.label ? window.CapsaFX.label(c) : String(c));
 
-  let M, R = null, last = null;
+  let M, R = null, last = null, setupSeq = 0;
   function newMatch(names) {
     M = { startedAt: Date.now(), names: names || [], rounds: [], moments: [], threads: [], chats: [], grudges: [], bounty: null,
-      streak: {}, wins: {}, penalty: {}, mistakes: {}, bombs: 0, sflush: 0, twosDied: 0, ezLosses: 0 };
+      streak: {}, wins: {}, penalty: {}, mistakes: {}, bombs: 0, sflush: 0, twosDied: 0, ezLosses: 0,
+      favorite: null, scores: {}, leads: {}, pokes: {}, setups: [], twosDiedBy: {}, lastCardBy: {} };
     R = null; last = null;
   }
   newMatch([]);
   function freshRound(d) {
     const names = d.names || M.names, n = names.length || 4;
     return { n: d.round || 0, names, start: Date.now(), counts: Array(n).fill(13), min: Array(n).fill(13), hitOne: Array(n).fill(false),
-      passes: Array(n).fill(0), passPlayable: Array(n).fill(0), timeouts: Array(n).fill(0), overkills: Array(n).fill(0), plays: 0, lastBig: null };
+      passes: Array(n).fill(0), passPlayable: Array(n).fill(0), timeouts: Array(n).fill(0), overkills: Array(n).fill(0), plays: 0,
+      lastBig: null, beats: {}, beatBy: {}, prevAction: null, actBeforePlay: null, chatted: Array(n).fill(false) };
   }
   const ensureR = (d) => { if (!R) { R = freshRound(d); R.partial = true; } };
-  const moment = (round, name, text, w) => { M.moments.push({ round, name, text, w }); if (M.moments.length > 60) M.moments.shift(); };
+  const moment = (round, name, text, w, bad) => { M.moments.push({ round, name, key: key(name), text, w, bad: !!bad }); if (M.moments.length > 80) M.moments.shift(); };
   const bump = (obj, n) => { const k = key(n); obj[k] = (obj[k] || 0) + 1; };
+  const names = () => (R && R.names.length ? R.names : M.names);
+  const habit = (n) => { const l = M.leads[key(n)] || []; const c = {}; let best = null; l.forEach((x) => { c[x] = (c[x] || 0) + 1; if (!best || c[x] > c[best]) best = x; }); return best ? { combo: best, count: c[best], total: l.length } : null; };
+  function leadTurn(seat) {
+    const nm = names()[seat]; if (nm == null) return;
+    const h = habit(nm);
+    if (h && h.count >= 3) sig('MEM_LEAD_TURN', { seat, name: nm, combo: h.combo, count: h.count });
+  }
+  const addSetup = (s) => { s.id = 's' + (++setupSeq) + ':' + s.type + ':' + key(s.name); M.setups.push(s); };
 
   E.on('fact:game:start', (d) => newMatch(d.names));
 
@@ -48,12 +63,21 @@
     if (!M.names.length) M.names = d.names || [];
     R = freshRound(d);
     M.threads.forEach((t) => { if (t.state === 'tense') t.state = 'open'; });
+    M.setups = M.setups.filter((s) => (d.round || 0) - s.round <= SETUP_ROUNDS);
+    if (d.starter != null) leadTurn(d.starter);
   });
 
   E.on('fact:play', (d) => {
     ensureR(d); R.plays++;
     if (Array.isArray(d.counts)) { R.counts = d.counts.slice(); d.counts.forEach((c, i) => { R.min[i] = Math.min(R.min[i] == null ? 13 : R.min[i], c); }); }
     const me = d.seat, nm = d.name, left = R.counts[me];
+    R.actBeforePlay = R.prevAction; R.prevAction = { type: 'play', seat: me };
+    if (!d.prev) { const k = key(nm); (M.leads[k] = M.leads[k] || []).push(d.combo); }
+    if (d.prev && d.prev.by !== me) {
+      const pk = me + '>' + d.prev.by; R.beats[pk] = (R.beats[pk] || 0) + 1;
+      (R.beatBy[me] = R.beatBy[me] || {})[d.prev.by] = true;
+      if (R.beats[pk] === 3) sig('MEM_BULLY', { seat: me, name: nm, victimSeat: d.prev.by, victim: R.names[d.prev.by] });
+    }
     if (left === 1 && !R.hitOne[me]) {
       R.hitOne[me] = true;
       sig('MEM_ONE_CARD', { seat: me, name: nm });
@@ -72,99 +96,138 @@
     if (d.cat >= 4) { M.bombs++; if (d.cat === 5) M.sflush++; }
   });
 
+  E.on('fact:skip', (d) => leadTurn(d.seat));
+
   E.on('fact:pass', (d) => {
     ensureR(d);
     const me = d.seat;
     R.passes[me] = (R.passes[me] || 0) + 1;
-    if (d.timeout) { R.timeouts[me]++; repBump(d.name, 'timeouts'); }
+    R.prevAction = { type: 'pass', seat: me, hadPlay: !!d.hadPlay };
+    if (d.timeout) { R.timeouts[me]++; repBump(d.name, 'timeouts'); moment(R.n, d.name, 'timeout', 5, true); }
     if (d.hadPlay) {
       R.passPlayable[me]++; bump(M.mistakes, d.name); repBump(d.name, 'passivePasses');
       if (R.passPlayable[me] === 3) sig('MEM_PASSIVE', { seat: me, name: d.name, count: 3 });
     }
+    const n = names().length;
+    if (d.table && n && (me + 1) % n === d.table.by) leadTurn(d.table.by);
   });
 
   E.on('fact:chat', (d) => {
-    M.chats.push({ seat: d.seat, name: d.name, key: key(d.name), text: d.text, preset: d.preset, trash: !!d.trash, t: Date.now(), round: R ? R.n : 0 });
-    if (M.chats.length > 40) M.chats.shift();
+    const trash = !!(d.trash || d.prediction);
+    const c = { seat: d.seat, name: d.name, key: key(d.name), text: d.text, trash, prediction: !!d.prediction, confession: !!d.confession,
+      target: d.target, t: Date.now(), round: R ? R.n : 0, held: Array.isArray(d.counts) ? d.counts[d.seat] : null };
+    M.chats.push(c); if (M.chats.length > 60) M.chats.shift();
+    if (R && d.seat != null) R.chatted[d.seat] = R.chatted[d.seat] || trash;
+    if (d.confession) moment(c.round, d.name, `"${d.text}"`, 5, true);
+    if (trash) sig('MEM_TRASH', { seat: d.seat, name: d.name, text: d.text, held: c.held, prediction: c.prediction });
+    if (d.target != null && d.target !== d.seat) {
+      const pk = key(d.name) + '>' + key(names()[d.target]);
+      M.pokes[pk] = (M.pokes[pk] || 0) + 1;
+      if (M.pokes[pk] === 2) sig('MEM_POKE', { seat: d.seat, name: d.name, victimSeat: d.target, victim: names()[d.target] });
+    }
   });
 
   E.on('fact:round:end', (d) => {
     ensureR(d);
-    const names = d.names || [], w = d.winner, wName = names[w], now = Date.now();
-    if (!M.names.length) M.names = names;
-    const row = { round: d.round, winner: w, winnerName: wName, how: d.how, names, counts: d.counts, hands: d.hands || [],
+    const nm = d.names || [], w = d.winner, wName = nm[w], now = Date.now();
+    if (!M.names.length) M.names = nm;
+    const before = {};
+    nm.forEach((n) => { before[key(n)] = Object.assign({}, M.streak[key(n)] || { win: 0, loss: 0 }); });
+    const enabler = R.actBeforePlay && R.actBeforePlay.type === 'pass' && R.actBeforePlay.hadPlay && R.actBeforePlay.seat !== w ? R.actBeforePlay.seat : null;
+    const row = { round: d.round, winner: w, winnerName: wName, how: d.how, names: nm, counts: d.counts, hands: d.hands || [],
       penalties: d.penalties || [], scoresBefore: d.scoresBefore, scoresAfter: d.scoresAfter, final: d.final,
-      min: R.min.slice(), passes: R.passes.slice(), passPlayable: R.passPlayable.slice(), partial: !!R.partial };
+      min: R.min.slice(), passes: R.passes.slice(), passPlayable: R.passPlayable.slice(), partial: !!R.partial,
+      beatBy: Object.assign({}, R.beatBy), enabler };
+    const prevRow = last;
     M.rounds.push(row); last = row;
 
-    names.forEach((nm, i) => {
-      const k = key(nm), s = M.streak[k] || (M.streak[k] = { win: 0, loss: 0 });
+    nm.forEach((n, i) => {
+      const k = key(n), s = M.streak[k] || (M.streak[k] = { win: 0, loss: 0 });
       if (i === w) { s.win++; s.loss = 0; M.wins[k] = (M.wins[k] || 0) + 1; } else { s.loss++; s.win = 0; }
       M.penalty[k] = (M.penalty[k] || 0) + (row.penalties[i] || 0);
+      (M.scores[k] = M.scores[k] || []).push((d.scoresAfter || [])[i] || 0);
     });
 
-    // reputation
-    names.forEach((nm, i) => {
-      repBump(nm, 'rounds');
-      if (i === w) { repBump(nm, 'wins'); if (d.how === 'bomb') repBump(nm, 'bombWins'); return; }
+    // a win after a slump (lost on the last card last round, or 2+ losses in a row)
+    const bw = before[key(wName)] || { loss: 0 };
+    const lastCardPrev = prevRow && prevRow.winner !== w && prevRow.counts[w] === 1;
+    if (bw.loss >= 2 || lastCardPrev) sig('MEM_SLUMP_WIN', { seat: w, name: wName, prevLoss: bw.loss, lastCardPrev: !!lastCardPrev });
+
+    // reputation, incidents, delayed setups
+    const badBefore = {};
+    nm.forEach((n) => { badBefore[key(n)] = M.moments.filter((m) => m.bad && m.key === key(n)).length; });
+    nm.forEach((n, i) => {
+      repBump(n, 'rounds');
+      if (i === w) { repBump(n, 'wins'); if (d.how === 'bomb') repBump(n, 'bombWins'); return; }
       const left = d.counts[i], hand = row.hands[i] || [];
-      if (left === 1) repBump(nm, 'lastCardLosses');
-      if (left > 0 && left <= 2) repBump(nm, 'badBeats');
-      const twos = hand.filter((c) => RANK(c) === 12).length;
-      if (twos >= 2) { repBump(nm, 'hoards'); M.twosDied += twos; }
-      if (hasQuad(hand)) repBump(nm, 'bombDeaths');
-      if (left === 13) { repBump(nm, 'sealed'); moment(d.round, nm, 'selesai masih pegang 13 kartu', 9); }
-      repMax(nm, 'worstLossStreak', M.streak[key(nm)].loss);
+      if (left === 1) {
+        repBump(n, 'lastCardLosses');
+        const k = key(n); M.lastCardBy[k] = (M.lastCardBy[k] || 0) + 1;
+        if (M.lastCardBy[k] === 1) addSetup({ type: 'kenangan', name: n, round: d.round, card: hand[0] });
+      }
+      if (left > 0 && left <= 2) repBump(n, 'badBeats');
+      const twos = hand.filter((c) => RANK(c) === 12);
+      if (twos.length >= 2) { repBump(n, 'hoards'); M.twosDied += twos.length; M.twosDiedBy[key(n)] = (M.twosDiedBy[key(n)] || 0) + 1; }
+      if (twos.length && R.passPlayable[i] > 0) addSetup({ type: 'prasasti', name: n, round: d.round, cards: twos });
+      if (twos.length >= 2) moment(d.round, n, `mati megang ${twos.map(label).join(' ')}`, 5, true);
+      const q = quadRank(hand);
+      if (q >= 0) { repBump(n, 'bombDeaths'); addSetup({ type: 'prasasti', name: n, round: d.round, cards: hand.filter((c) => RANK(c) === q), bomb: true }); moment(d.round, n, 'mati megang Four of a Kind', 5, true); }
+      if (left === 13) { repBump(n, 'sealed'); moment(d.round, n, 'selesai masih pegang 13 kartu', 9, true); }
+      repMax(n, 'worstLossStreak', M.streak[key(n)].loss);
     });
 
     // callback thread: lost on the last card → later back on one card → resolution
     M.threads.filter((t) => t.type === 'lastCard' && t.state === 'tense').forEach((t) => {
-      const i = names.findIndex((x) => key(x) === t.key);
+      const i = nm.findIndex((x) => key(x) === t.key);
       if (i < 0) return;
       const outcome = i === w ? 'won' : 'lost';
-      sig('MEM_THREAD_RESOLVED', { seat: i, name: names[i], outcome, originRound: t.round, times: t.times });
-      if (outcome === 'won') { t.state = 'closed'; moment(d.round, names[i], 'akhirnya menang di situasi kartu terakhir', 4); }
-      else { t.state = 'open'; t.times = (t.times || 1) + 1; t.lastRound = d.round; moment(d.round, names[i], `kalah di kartu terakhir (lagi, ke-${t.times})`, 7); }
+      sig('MEM_THREAD_RESOLVED', { seat: i, name: nm[i], outcome, originRound: t.round, times: t.times });
+      if (outcome === 'won') { t.state = 'closed'; moment(d.round, nm[i], 'akhirnya menang di situasi kartu terakhir', 4); }
+      else { t.state = 'open'; t.times = (t.times || 1) + 1; t.lastRound = d.round; moment(d.round, nm[i], `kalah di kartu terakhir (lagi, ke-${t.times})`, 7, true); }
     });
-    names.forEach((nm, i) => {
+    nm.forEach((n, i) => {
       if (i === w || d.counts[i] !== 1) return;
-      if (!M.threads.some((t) => t.type === 'lastCard' && t.key === key(nm) && t.state !== 'closed')) {
-        M.threads.push({ type: 'lastCard', key: key(nm), name: nm, round: d.round, state: 'open', times: 1 });
-        moment(d.round, nm, 'kalah di kartu terakhir', 5);
+      if (!M.threads.some((t) => t.type === 'lastCard' && t.key === key(n) && t.state !== 'closed')) {
+        M.threads.push({ type: 'lastCard', key: key(n), name: n, round: d.round, state: 'open', times: 1 });
+        const card = (row.hands[i] || [])[0];
+        moment(d.round, n, `kalah, sisa 1 kartu${card != null ? ` (${label(card)})` : ''}`, 5, true);
       }
     });
 
-    // trash talk that aged badly (or well)
+    // trash talk / predictions that aged badly (or well)
     const said = {};
     M.chats.filter((c) => c.trash && !c.resolved && (c.round === d.round || now - c.t < 120000)).forEach((c) => { said[c.key] = c; });
     Object.values(said).forEach((c) => {
-      const i = names.findIndex((x) => key(x) === c.key);
+      const i = nm.findIndex((x) => key(x) === c.key);
       if (i < 0) return;
       M.chats.forEach((o) => { if (o.key === c.key && o.trash) o.resolved = true; });
       const outcome = i === w ? 'won' : 'lost';
-      if (outcome === 'lost') { M.ezLosses++; repBump(names[i], 'ezLosses'); moment(d.round, names[i], `ngetik "${c.text}" lalu kalah`, 8); }
-      sig('MEM_EZ_RESOLVED', { seat: i, name: names[i], text: c.text, outcome, secs: Math.max(1, Math.round((now - c.t) / 1000)) });
+      if (outcome === 'lost') {
+        M.ezLosses++; repBump(nm[i], 'ezLosses'); moment(d.round, nm[i], `"${c.text}"`, 8, true);
+        addSetup({ type: 'ezLost', name: nm[i], round: d.round, text: c.text, cardsLeft: d.counts[i] });
+      }
+      sig('MEM_EZ_RESOLVED', { seat: i, name: nm[i], text: c.text, outcome, prediction: c.prediction, cardsLeft: d.counts[i], secs: Math.max(1, Math.round((now - c.t) / 1000)) });
     });
 
     // grudges: settle, then record new humiliations
     M.grudges = M.grudges.filter((g) => {
       if (key(wName) !== g.victimKey) return true;
-      const bi = names.findIndex((x) => key(x) === g.bullyKey);
+      const bi = nm.findIndex((x) => key(x) === g.bullyKey);
       if (bi < 0 || bi === w) return true;
-      sig('MEM_GRUDGE_SETTLED', { seat: w, name: wName, bully: names[bi], bullySeat: bi, round: g.round, pen: g.pen });
-      repBump(wName, 'revenges'); moment(d.round, wName, `bales dendam ke ${names[bi]} (utang ronde ${g.round})`, 6);
+      sig('MEM_GRUDGE_SETTLED', { seat: w, name: wName, bully: nm[bi], bullySeat: bi, round: g.round, pen: g.pen });
+      repBump(wName, 'revenges'); moment(d.round, wName, `bales dendam ke ${nm[bi]} (utang ronde ${g.round})`, 6);
       return false;
     });
-    names.forEach((nm, i) => {
+    nm.forEach((n, i) => {
       const pen = row.penalties[i] || 0;
-      if (i !== w && pen >= 10 && !M.grudges.some((g) => g.victimKey === key(nm) && g.bullyKey === key(wName))) {
-        M.grudges.push({ victimKey: key(nm), victim: nm, bullyKey: key(wName), bully: wName, round: d.round, pen });
+      if (i !== w && pen >= 10 && !M.grudges.some((g) => g.victimKey === key(n) && g.bullyKey === key(wName))) {
+        M.grudges.push({ victimKey: key(n), victim: n, bullyKey: key(wName), bully: wName, round: d.round, pen });
       }
     });
 
     // bounty: claim, then maybe post
     if (M.bounty) {
-      const ti = names.findIndex((x) => key(x) === M.bounty.key);
+      const ti = nm.findIndex((x) => key(x) === M.bounty.key);
       if (ti >= 0 && ti !== w) {
         sig('MEM_BOUNTY_CLAIMED', { seat: w, name: wName, target: M.bounty.name, targetSeat: ti, streak: M.bounty.streak });
         repBump(wName, 'bountiesClaimed'); moment(d.round, wName, `ngeklaim bounty ${M.bounty.name}`, 6);
@@ -174,6 +237,30 @@
     const ws = M.streak[key(wName)];
     if (!M.bounty && ws && ws.win >= 3) { M.bounty = { key: key(wName), name: wName, round: d.round, streak: ws.win }; sig('MEM_BOUNTY_POSTED', { seat: w, name: wName, streak: ws.win }); }
     if (d.how === 'bomb') moment(d.round, wName, 'menang pakai bom', 3);
+
+    // the system's favorite: lowest score after the first round; replaced after 3 losses in a row
+    if (!M.favorite && Array.isArray(d.scoresAfter) && d.scoresAfter.length) {
+      const lo = Math.min(...d.scoresAfter), i = d.scoresAfter.indexOf(lo);
+      M.favorite = { key: key(nm[i]), name: nm[i], since: d.round };
+      sig('MEM_FAVORITE_SET', { seat: i, name: nm[i] });
+    } else if (M.favorite) {
+      const fi = nm.findIndex((x) => key(x) === M.favorite.key);
+      if (fi >= 0 && (M.streak[M.favorite.key] || {}).loss >= 3) {
+        let best = -1;
+        nm.forEach((n, i) => { if (i !== fi && (best < 0 || (M.wins[key(n)] || 0) > (M.wins[key(nm[best])] || 0))) best = i; });
+        if (best >= 0) {
+          const old = M.favorite.name;
+          M.favorite = { key: key(nm[best]), name: nm[best], since: d.round };
+          sig('MEM_FAVORITE_CHANGED', { seat: best, name: nm[best], old, oldSeat: fi });
+        }
+      }
+    }
+
+    // third bad incident for a player this match
+    nm.forEach((n, i) => {
+      const bad = M.moments.filter((m) => m.bad && m.key === key(n));
+      if (badBefore[key(n)] < 3 && bad.length >= 3) sig('MEM_INCIDENT', { seat: i, name: n, lines: bad.slice(0, 3).map((m) => `R${m.round} · ${m.text}`) });
+    });
 
     saveRep(); R = null;
   });
@@ -193,16 +280,38 @@
   // The player the director likes to bother: most points lost this match (after 2+ rounds).
   function target() {
     if (M.rounds.length < 2) return null;
-    const names = M.rounds[M.rounds.length - 1].names;
+    const nm = M.rounds[M.rounds.length - 1].names;
     let best = null;
-    names.forEach((n, i) => { const p = M.penalty[key(n)] || 0; if (p > 0 && (!best || p > best.pen)) best = { name: n, seat: i, pen: p }; });
+    nm.forEach((n, i) => { const p = M.penalty[key(n)] || 0; if (p > 0 && (!best || p > best.pen)) best = { name: n, seat: i, pen: p }; });
     return best;
+  }
+  // Short, true facts about the table, for patch notes and credits.
+  function lore() {
+    const out = [];
+    const nm = last ? last.names : M.names;
+    const lc = Object.entries(M.lastCardBy).sort((a, b) => b[1] - a[1])[0];
+    if (lc) out.push({ kind: 'lastCard', name: nm.find((n) => key(n) === lc[0]) || lc[0], count: lc[1] });
+    if (M.favorite) out.push({ kind: 'favorite', name: M.favorite.name });
+    const hd = Object.entries(M.twosDiedBy).sort((a, b) => b[1] - a[1])[0];
+    if (hd) out.push({ kind: 'hoarder', name: nm.find((n) => key(n) === hd[0]) || hd[0], count: hd[1] });
+    const ez = M.moments.filter((m) => m.bad && m.text.startsWith('"')).pop();
+    if (ez) out.push({ kind: 'trash', name: ez.name, text: ez.text });
+    if (nm.length) {
+      const scoreOf = (n) => { const s = M.scores[key(n)] || []; return s.length ? s[s.length - 1] : 0; };
+      const worst = [...nm].sort((a, b) => scoreOf(a) - scoreOf(b))[0];
+      out.push({ kind: 'worst', name: worst, score: scoreOf(worst) });
+    }
+    return out;
   }
   window.CapsaMemory = {
     key, match: () => M, round: () => R, lastRound: () => last,
     streak: (n) => M.streak[key(n)] || { win: 0, loss: 0 },
     rep: (n) => Object.assign({}, REP0, rep[key(n)] || {}),
-    title, target, hasQuad,
+    title, target, hasQuad, habit, lore,
+    favorite: () => M.favorite,
+    setups: (type) => M.setups.filter((s) => !type || s.type === type),
+    scoresOf: (n) => (M.scores[key(n)] || []).slice(),
+    note: (round, name, text, w) => moment(round, name, text, w || 5, false),
     resetReputation: () => { rep = {}; saveRep(); },
   };
 })();

@@ -49,19 +49,20 @@ Catatan teknis:
 Game ini punya "sutradara komedi" yang nonton pertandingan, nyimpen kejadian penting, dan sesekali mutusin buat ganggu mental pemain. Defaultnya **diam**: kebanyakan kejadian gak dapet reaksi. Kalau muncul, reaksinya selalu nyambung sama konteks (siapa, kartu apa, ronde berapa, udah berapa kali kejadian), dan kadang balik lagi ke kejadian ronde-ronde sebelumnya.
 
 Contoh:
-- Ngetik **EZ** di chat, terus kalah: layar ke-freeze, sunyi, muncul notif sistem "Pesan sebelumnya terdeteksi", bubble "EZ" nongol lagi, jeda, terus "Menarik."
-- Kalah di kartu terakhir → "Menarik." Beberapa ronde kemudian tinggal 1 kartu lagi → "Not this again." Kalau menang → "Character development." Kalau kalah lagi → "We have learned nothing."
-- Menang 3x beruntun → poster **DICARI** (bounty). Siapa pun yang ngalahin dia dapet notif "Bounty diklaim".
-- Bales dendam ke yang dulu ngebantai lu → struk pelunasan dengan stempel **LUNAS**.
-- Kejadian langka: layar error `CAPSA.EXE berhenti merespons`, sidang di pengadilan, atau 13 kartu yang dijual di marketplace karena "masih segel".
+- Ngetik **EZ**, terus kalah sisa 10 kartu: sistem diem total 4,5 detik. Gak ada tulisan apa-apa. Momen itu masuk laporan pertandingan.
+- Trash talk yang kalah bisa "disimpen" dulu. Beberapa ronde kemudian, pas orang lain menang: layar gelap, mic kosong, "Mic dibuka untuk Ana." … "Mic ditutup."
+- Kalah di kartu terakhir: gak ada reaksi. Ronde berikutnya, di tengah permainan, muncul toast **Kenangan** kayak di galeri HP, lengkap sama kartunya.
+- Sistem punya **favorit** (yang paling jelek abis ronde 1). Kombo dia dapet stempel "✓ disetujui", yang lain enggak. Kalau favoritnya kalah 3x, sistem pindah dukungan.
+- Pass terus padahal bisa jalan: label pass berubah jadi "pass (lagi)" → "pass (kebiasaan)" → "pass (prinsip hidup)".
+- Langka: catatan pembaruan di ronde 10 yang isinya kejadian match ini, "Sistem" ikut duduk di meja terus keluar lagi, atau skor juru kunci tiba-tiba jadi juara satu… "Maaf. Itu harapan, bukan data."
 
 Fitur pendukung:
-- **Chat cepat** (tombol Chat di atas): preset trash talk yang diingat sistem.
+- **Chat** (tombol Chat di atas): ketik bebas (60 huruf), preset, atau **Colek** satu pemain (`@nama`, ada garis ke kursinya). Ada riwayat chat, jeda 3 detik per pesan, dan sensor kata kasar (default nyala, bisa dimatiin di tiap HP). Daftar preset, kata kunci, dan kata yang disensor ada di atas `src/chat.js`.
 - **Gelar reputasi** di kursi pemain, misalnya "Spesialis Nyaris" atau "Kolektor Kartu 2". Kesimpen di device.
-- Tombol **Laporan pertandingan** di layar hasil ronde (mulai ronde 2): roast summary satu match.
+- Tombol **Laporan pertandingan** di layar hasil ronde (mulai ronde 2), dan **kredit akhir** kalau keluar dari match 8+ ronde.
 - **Statistik → Tes komedi**: preview tiap bit.
 
-Desain lengkap (arsitektur, data konteks, aturan rarity/peluang, 32 bit, cara nambah bit) ada di **[`docs/COMEDY_DIRECTOR.md`](docs/COMEDY_DIRECTOR.md)**. Pengaturan ada di `src/comedy/config.js`, bit-nya di `src/comedy/bits.js`, dan suaranya (original, bisa diganti) di `audio/comedy/`. Di mode online, cuma HP host yang mutusin, terus semua HP muterin reaksi yang sama persis.
+Desain lengkap (arsitektur, aturan peluang & budget, daftar bit, chat, cara nambah bit) ada di **[`docs/COMEDY_DIRECTOR.md`](docs/COMEDY_DIRECTOR.md)**. Pengaturan ada di `src/comedy/config.js`, bit-nya di `src/comedy/bits.js`, dan suaranya (original, bisa diganti) di `audio/comedy/`. Di mode online, cuma HP host yang mutusin, terus semua HP muterin reaksi yang sama persis.
 
 ## Event & reaksi
 

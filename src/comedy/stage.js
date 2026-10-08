@@ -42,13 +42,14 @@
     })();
     return bufs[k];
   }
-  function sound(k) {
+  function sound(k, vol) {
+    const V = vol != null ? vol : 0.9;
     if (!FX() || !FX().soundOn()) return;
     load(k).then((b) => {
       if (!b) return;
-      if (b.fallback) { try { const a = new Audio(b.fallback); a.volume = 0.9; a.play().catch(() => {}); } catch (e) {} return; }
+      if (b.fallback) { try { const a = new Audio(b.fallback); a.volume = V; a.play().catch(() => {}); } catch (e) {} return; }
       const o = FX().audio(); if (!o || !o.ctx) return;
-      const s = o.ctx.createBufferSource(), g = o.ctx.createGain(); s.buffer = b; g.gain.value = 0.9;
+      const s = o.ctx.createBufferSource(), g = o.ctx.createGain(); s.buffer = b; g.gain.value = V;
       s.connect(g).connect(o.out || o.ctx.destination); s.start();
     });
   }
@@ -87,7 +88,7 @@
     wait() {},
     freeze(s) { freeze(s.ms || 2000); },
     silence(s) { if (FX()) FX().duck(s.ms || 2000); },
-    sound(s) { sound(s.key); },
+    sound(s) { sound(s.key, s.vol); },
     effect(s) {
       const fx = FX(); if (!fx || reduced()) return;
       if (s.name === 'glitch') { document.documentElement.classList.add('cd-glitch'); setTimeout(() => document.documentElement.classList.remove('cd-glitch'), 900); return; }
@@ -97,21 +98,11 @@
     rarity(s) { put(`<span>${s.level === 'LEGENDARY' ? '★' : '✦'}</span> ${esc(s.level)}`, `cd-rarity cd-r-${String(s.level).toLowerCase()}`, 2200); },
     caption(s) { put(esc(s.text), `cd-caption cd-${s.size || 'm'}`, s.ms || 2000); },
     banner(s) { put(esc(s.text), 'cd-banner', s.ms || 2000); },
-    notify(s) {
-      const el = put(`<div class="cd-n-head"><i class="cd-n-icon">${esc((s.app || 'S')[0])}</i><span class="cd-n-app">${esc(s.app || 'Sistem')}</span><span class="cd-n-time">sekarang</span></div>
-        <div class="cd-n-title">${esc(s.title || '')}</div>${s.body ? `<div class="cd-n-body">${esc(s.body)}</div>` : ''}
-        ${s.buttons ? `<div class="cd-n-btns">${s.buttons.map((b) => `<button type="button">${esc(b)}</button>`).join('')}</div>` : ''}`, 'cd-notif', s.ms || 4000);
-      el.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }));
-    },
     bubble(s) { const p = seatPoint(s.seat); put(esc(s.text), 'cd-bubble', s.ms || 2500, { style: `left:${p.x}px;top:${p.y}px` }); },
     card(s) {
       const fx = FX();
       put(`<div class="cd-card-m">${fx ? fx.mascotSVG(s.mascot || 'laugh') : ''}</div><div><div class="cd-card-t">${esc(s.title)}</div><p>${esc(s.text)}</p>${s.stat ? `<small>${esc(s.stat)}</small>` : ''}</div>`,
         `cd-card cd-tone-${s.tone || 'win'}`, s.ms || 4000);
-    },
-    chart(s) {
-      put(`<div class="cd-ch-head"><span>ANALISIS</span><b>${esc(s.title)}</b>${s.sub ? `<small>${esc(s.sub)}</small>` : ''}</div>
-        ${s.kind === 'flat' ? flat() : bar(s.data || [], s.unit)}${s.note ? `<p class="cd-ch-note">${esc(s.note)}</p>` : ''}`, 'cd-chart', s.ms || 5000);
     },
     poster(s) {
       put(`<div class="cd-p-title">${esc(s.title || 'DICARI')}</div><div class="cd-p-face">${FX() ? FX().mascotSVG('cool') : ''}</div>
@@ -143,7 +134,232 @@
         ${s.caption ? `<div class="cd-rp-cap">${esc(s.caption)}</div>` : ''}`, 'cd-replay', s.ms || 4500);
       if (s.block) el.style.pointerEvents = 'auto';
     },
+    notify(s) {
+      const icon = s.icon === 'calendar'
+        ? `<i class="cd-n-icon cd-n-cal"><b>${new Date().getDate()}</b></i>`
+        : `<i class="cd-n-icon">${esc((s.app || 'S')[0])}</i>`;
+      const btns = (s.buttons || []).map((b) => (typeof b === 'string' ? { label: b } : b));
+      const el = put(`<div class="cd-n-head">${icon}<span class="cd-n-app">${esc(s.app || 'Sistem')}</span><span class="cd-n-time">sekarang</span></div>
+        <div class="cd-n-title">${esc(s.title || '')}</div>${s.body ? `<div class="cd-n-body">${esc(s.body)}</div>` : ''}
+        ${(s.lines || []).map((l) => `<div class="cd-n-body">${esc(l)}</div>`).join('')}
+        ${s.later ? `<div class="cd-n-body cd-n-later" hidden>${esc(s.later.text)}</div>` : ''}
+        ${btns.length ? `<div class="cd-n-btns">${btns.map((b, i) => `<button type="button" data-i="${i}">${esc(b.label)}</button>`).join('')}</div>` : ''}`, 'cd-notif', s.ms || 4000);
+      el.querySelectorAll('button').forEach((bt) => bt.addEventListener('click', () => {
+        const b = btns[+bt.dataset.i];
+        if (b && b.reply) {
+          el.querySelector('.cd-n-title').textContent = b.reply;
+          el.querySelectorAll('.cd-n-body,.cd-n-btns').forEach((x) => x.remove());
+          setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); }, 2500);
+        } else { el.classList.add('out'); setTimeout(() => el.remove(), 300); }
+      }));
+      if (s.later) setTimeout(() => { const l = el.querySelector('.cd-n-later'); if (l) l.hidden = false; }, s.later.at || 2000);
+    },
+    chart(s) {
+      const body = s.kind === 'flat' ? flat() : s.kind === 'line' ? line(s.data || []) : bar(s.data || [], s.unit);
+      const el = put(`<div class="cd-ch-head"><span>ANALISIS</span><b>${esc(s.title)}</b>${s.sub ? `<small>${esc(s.sub)}</small>` : ''}</div>
+        ${body}${s.note ? `<p class="cd-ch-note"${s.noteAt ? ' hidden' : ''}>${esc(s.note)}</p>` : ''}`, 'cd-chart', s.ms || 5000);
+      if (s.noteAt) setTimeout(() => { const n = el.querySelector('.cd-ch-note'); if (n) n.hidden = false; }, s.noteAt);
+    },
+    memory(s) {
+      const fx = FX();
+      put(`<div class="cd-mem-thumb">${s.card != null && fx ? fx.cardHTML(s.card) : ''}</div>
+        <div class="cd-mem-txt"><b>${esc(s.title || 'Kenangan')}</b><span>${esc(s.sub || '')}</span><small>${esc(s.caption || '')}</small></div>`, 'cd-mem', s.ms || 4000);
+    },
+    memorial(s) {
+      const fx = FX();
+      put(`<div class="cd-mm-cards">${(s.cards || []).map((c) => (fx ? fx.cardHTML(c) : '')).join('')}</div>
+        <div class="cd-mm-l1">${esc(s.line1 || '')}</div><div class="cd-mm-l2">${esc(s.line2 || '')}</div>`, 'cd-memorial', s.ms || 4500);
+    },
+    dim(s) { put('', 'cd-dim', s.ms || 3000); },
+    mic(s) {
+      const p = seatPoint(s.seat);
+      const el = put(`<svg viewBox="0 0 24 24" class="cd-mic-i" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" fill="#fff"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+        <span class="cd-mic-t">${esc(s.open || '')}</span>`, 'cd-mic', s.ms || 6000, { style: `left:${p.x}px;top:${p.y}px` });
+      if (s.close) setTimeout(() => { const t = el.querySelector('.cd-mic-t'); if (t) t.textContent = s.close; el.classList.add('closed'); sound('stamp'); }, s.closeAt || 4000);
+    },
+    cctv(s) {
+      const fx = FX(), ms = s.ms || 5000;
+      const el = put(`<div class="cd-cctv-tag">● KAM 02 · MEJA · <span class="cd-cctv-clock"></span></div>
+        <div class="cd-cctv-cards">${(s.cards || []).map((c) => (fx ? fx.cardHTML(c) : '')).join('')}</div>
+        <div class="cd-cctv-cap" hidden>${esc(s.caption || '')}</div>`, 'cd-cctv', ms);
+      el.style.pointerEvents = 'auto';
+      document.documentElement.classList.add('cd-cctv-on');
+      setTimeout(() => document.documentElement.classList.remove('cd-cctv-on'), ms);
+      const clock = el.querySelector('.cd-cctv-clock');
+      const tick = () => { if (!el.isConnected) return; clock.textContent = new Date().toLocaleTimeString('id-ID', { hour12: false }); setTimeout(tick, 250); };
+      tick();
+      setTimeout(() => { const c = el.querySelector('.cd-cctv-cap'); if (c) c.hidden = false; }, s.captionAt || 2500);
+    },
+    tape(s) { put(`<div class="cd-tape-band"><span>${esc((s.text + '   ·   ').repeat(8))}</span></div>`, 'cd-tape', s.ms || 4000); },
+    archive(s) {
+      const el = put(`<div class="cd-ar-tab">${esc(s.title || 'ARSIP')}</div>
+        <div class="cd-ar-lines">${(s.lines || []).map((l) => `<div class="cd-ar-line" hidden>${esc(l)}</div>`).join('')}</div>
+        <div class="cd-ar-stamp" hidden>${esc(s.stamp || 'AKTIF')}</div>`, 'cd-archive', s.ms || 5500);
+      const rows = el.querySelectorAll('.cd-ar-line');
+      rows.forEach((r, i) => setTimeout(() => { r.hidden = false; sound('typing'); }, 800 * (i + 1)));
+      setTimeout(() => { const st = el.querySelector('.cd-ar-stamp'); if (st) { st.hidden = false; sound('stamp'); } }, 800 * (rows.length + 1) + 400);
+    },
+    reco(s) {
+      const fx = FX();
+      put(`<div class="cd-reco-thumb">${(s.cards || []).map((c) => (fx ? fx.cardHTML(c) : '')).join('')}<span>${esc(s.duration || '12:04')}</span></div>
+        <div class="cd-reco-meta"><b>${esc(s.title || '')}</b><small>${esc(s.sub || '')}</small></div>`, 'cd-reco', s.ms || 4000);
+    },
+    patch(s) {
+      const el = put(`<div class="cd-pt-head"><b>${esc(s.title || 'Catatan pembaruan')}</b><code>${esc(s.version || '')}</code></div>
+        <ul>${(s.lines || []).map((l) => `<li hidden>${esc(l)}</li>`).join('')}</ul>
+        <button type="button" class="btn primary">${esc(s.button || 'Perbarui')}</button>`, 'cd-patch', s.ms || 9000);
+      el.style.pointerEvents = 'auto';
+      el.querySelectorAll('li').forEach((li, i) => setTimeout(() => { li.hidden = false; }, 900 * (i + 1)));
+      el.querySelector('button').addEventListener('click', () => { el.classList.add('out'); setTimeout(() => el.remove(), 300); });
+    },
+    still(s) {
+      const cd = s.countdown || 3000;
+      const el = put(`<div class="cd-st-q">${esc(s.question || '')}</div><div class="cd-st-bar"><span></span></div>
+        <button type="button" class="btn">${esc(s.button || 'Masih')}</button>`, 'cd-still', cd + 1700);
+      el.style.pointerEvents = 'auto';
+      const bar = el.querySelector('.cd-st-bar span');
+      requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = `width ${cd}ms linear`; bar.style.width = '0%'; }));
+      let answered = false;
+      el.querySelector('button').addEventListener('click', () => { answered = true; el.classList.add('out'); setTimeout(() => el.remove(), 300); });
+      setTimeout(() => {
+        if (answered || !el.isConnected) return;
+        el.querySelector('.cd-st-q').textContent = s.after || '';
+        el.querySelectorAll('.cd-st-bar,button').forEach((x) => x.remove());
+        sound('notify');
+      }, cd);
+    },
+    spot(s) {
+      const fx = FX();
+      put(`<div class="cd-spot-cards">${(s.cards || []).map((c) => (fx ? fx.cardHTML(c) : '')).join('')}</div>`, 'cd-spot', s.ms || 2000);
+    },
+    approve(s) { addDeco({ kind: 'approve', sig: s.sig, until: Date.now() + (s.ms || 600000) }); },
+    tag(s) { addDeco({ kind: 'tag', seat: s.seat, text: s.text, cls: s.cls || '', until: Date.now() + (s.ms || 2500) }); },
+    predict(s) { addDeco({ kind: 'predict', seat: s.seat, combo: s.combo, text: `prediksi: ${s.combo}`, until: Date.now() + (s.ms || 90000) }); },
+    ribbon(s) { addDeco({ kind: 'ribbon', seat: s.seat, until: Date.now() + (s.ms || 6000) }); },
+    fakeSeat(s) {
+      const d = { kind: 'fakeSeat', name: s.name || 'Sistem', text: s.text || '13 kartu', until: Date.now() + (s.ms || 6500) };
+      addDeco(d);
+      if (s.later) setTimeout(() => { d.text = s.later; decorate(); }, s.laterAt || 4500);
+    },
+    scoreSwap(s) {
+      const v = FX() && FX().view();
+      addDeco({ kind: 'score', seat: s.seat, value: s.value, orig: v && v.scores ? v.scores[s.seat] : null, until: Date.now() + (s.ms || 2000) });
+    },
   };
+
+  /* ---------- decorations: small things attached to seats / the table, re-applied after every render ---------- */
+  const deco = [];
+  const sigOf = (cards) => (cards || []).slice().sort((a, b) => a - b).join(',');
+  function addDeco(d) {
+    deco.push(d); decorate();
+    setTimeout(decorate, Math.max(0, d.until - Date.now()) + 40);
+  }
+  function decorate() {
+    document.querySelectorAll('.cd-deco').forEach((x) => x.remove());
+    const now = Date.now(), fx = FX(), v = fx ? fx.view() : null;
+    for (let i = deco.length - 1; i >= 0; i--) {
+      const d = deco[i];
+      if (d.until > now) continue;
+      if (d.kind === 'score') { const sc = document.querySelector(`#seat-${d.seat} .sc`); if (sc && sc.firstChild && d.orig != null) sc.firstChild.textContent = (d.orig > 0 ? '+' : '') + d.orig; }
+      deco.splice(i, 1);
+    }
+    for (const d of deco) {
+      const seat = d.seat != null ? document.getElementById('seat-' + d.seat) : null;
+      if ((d.kind === 'tag' || d.kind === 'predict') && seat) {
+        const t = document.createElement('div'); t.className = 'cd-deco cd-seat-note ' + (d.cls || ''); t.textContent = d.text; seat.appendChild(t);
+      } else if (d.kind === 'ribbon' && seat) {
+        const r = document.createElement('i'); r.className = 'cd-deco cd-ribbon'; r.setAttribute('aria-hidden', 'true'); seat.appendChild(r);
+      } else if (d.kind === 'approve' && v && v.table && sigOf(v.table.cards) === d.sig) {
+        const pl = document.querySelector('.board .played');
+        if (pl) { pl.style.position = 'relative'; const a = document.createElement('span'); a.className = 'cd-deco cd-approve'; a.textContent = '✓ disetujui'; pl.appendChild(a); }
+      } else if (d.kind === 'fakeSeat') {
+        const seats = document.querySelector('.seats');
+        if (seats) {
+          const f = document.createElement('div'); f.className = 'cd-deco seat cd-fake-seat';
+          f.innerHTML = `<div class="card back mini" aria-hidden="true"></div><div class="nm">${esc(d.name)}</div><div class="sc">0<small>poin</small></div><span></span><div class="ct">${esc(d.text)}</div>`;
+          seats.appendChild(f);
+        }
+      } else if (d.kind === 'score') {
+        const sc = document.querySelector(`#seat-${d.seat} .sc`);
+        if (sc && sc.firstChild) { sc.firstChild.textContent = (d.value > 0 ? '+' : '') + d.value; sc.parentElement.classList.add('cd-gold'); setTimeout(() => sc.parentElement && sc.parentElement.classList.remove('cd-gold'), Math.max(0, d.until - Date.now())); }
+      }
+    }
+    // bit 7 "Pass (lagi)": the pass label climbs with passes made while holding a legal play
+    const mem = window.CapsaMemory, r = mem && mem.round();
+    if (r && v && ['turn', 'handoff'].includes(v.phase)) {
+      (r.passPlayable || []).forEach((n, i) => {
+        if (n < 3) return;
+        const pill = document.querySelector(`#seat-${i} .pill.pass`);
+        if (pill) pill.textContent = n >= 7 ? 'pass (prinsip hidup)' : n >= 5 ? 'pass (kebiasaan)' : 'pass (lagi)';
+      });
+    }
+  }
+  // a prediction tag resolves on that player's next play
+  if (window.CapsaEvents) window.CapsaEvents.on('fact:play', (d) => {
+    const p = deco.find((x) => x.kind === 'predict' && x.seat === d.seat);
+    if (!p) return;
+    p.kind = 'tag'; p.text = d.combo === p.combo ? '✓' : 'berkembang.'; p.until = Date.now() + 2600;
+    setTimeout(decorate, 2650); decorate();
+  });
+
+  /* ---------- line chart from real values ---------- */
+  function line(data) {
+    const vals = data.map((d) => d.value), lo = Math.min(...vals, 0), hi = Math.max(...vals, 0), W = 300, H = 110, pad = 22;
+    const x = (i) => pad + (i * (W - pad - 10)) / Math.max(1, vals.length - 1), y = (val) => 10 + ((hi - val) * (H - 30)) / Math.max(1, hi - lo);
+    const pts = vals.map((val, i) => `${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ');
+    const lx = x(vals.length - 1), ly = y(vals[vals.length - 1]);
+    return `<svg viewBox="0 0 ${W} ${H}" class="cd-svg" role="img" aria-label="Grafik garis">
+      <line x1="${pad}" x2="${W - 10}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="#c9d2e3" stroke-dasharray="3 3"/>
+      <text x="0" y="${(y(0) + 4).toFixed(1)}" class="cd-axis">0</text>
+      <polyline points="${pts}" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round"/>
+      <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4.5" fill="#d1262b"/>
+      <text x="${Math.min(lx - 4, W - 40).toFixed(1)}" y="${Math.min(H - 4, ly + 18).toFixed(1)}" class="cd-val">${vals[vals.length - 1]}</text>
+      ${data.map((d, i) => `<text x="${x(i).toFixed(1)}" y="${H - 2}" class="cd-axis" text-anchor="middle">${esc(d.label)}</text>`).join('')}</svg>`;
+  }
+
+  /* ---------- bit 28: closing credits when a long match ends ---------- */
+  function credits() {
+    const mem = window.CapsaMemory; if (!mem) return;
+    const M = mem.match(), rounds = M.rounds.length;
+    if (rounds < 8 || document.querySelector('.cd-credits')) return;
+    const names = M.rounds[rounds - 1].names, lore = mem.lore();
+    const hoarder = lore.find((l) => l.kind === 'hoarder'), worst = lore.find((l) => l.kind === 'worst');
+    const lines = ['CAPSA BANTING', '', 'Pemeran', ...names.map((n) => `${n} sebagai ${mem.title(n)}`), ''];
+    if (hoarder) lines.push(`Pemeran pengganti kartu 2: ${hoarder.name}`);
+    lines.push('Penata hening: Sistem', '', 'Tidak ada kartu yang dilukai dalam pertandingan ini.');
+    if (worst) lines.push(`Kecuali milik ${worst.name}.`);
+    const wrap = document.createElement('div');
+    wrap.className = 'cd-credits'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-label', 'Kredit akhir');
+    wrap.innerHTML = `<div class="cd-cr-roll">${lines.map((l) => (l ? `<p>${esc(l)}</p>` : '<p class="cd-cr-gap"></p>')).join('')}</div><button type="button" class="btn" data-cd-skip>Lewati</button>`;
+    document.body.appendChild(wrap);
+    sound('credits');
+    const close = () => { wrap.classList.add('out'); setTimeout(() => wrap.remove(), 400); };
+    wrap.querySelector('[data-cd-skip]').addEventListener('click', close);
+    setTimeout(close, 15000);
+  }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act="reset"],[data-act="leave-room"],[data-act="setup"]');
+    if (!b) return;
+    if (b.dataset.act === 'reset' && !/Yakin/.test(b.textContent)) return;
+    setTimeout(credits, 60);
+  }, true);
+
+  /* ---------- bit 26: one-device handoff screen, late in a long match ---------- */
+  let lapDone = false, lapSeen = '';
+  function lapCheck(v) {
+    if (lapDone || v.online || v.phase !== 'handoff' || !window.CapsaMemory) return;
+    const M = window.CapsaMemory.match(), mins = (Date.now() - M.startedAt) / 60000;
+    if (!(mins >= 40 || (v.round || 0) >= 12)) return;
+    const k = v.round + ':' + v.turn; if (k === lapSeen) return; lapSeen = k;
+    if (Math.random() >= 0.5) return;
+    lapDone = true;
+    setTimeout(() => {
+      const p = document.querySelector('.handoff p'); if (!p) return;
+      p.style.transition = 'opacity .4s'; p.style.opacity = '0';
+      setTimeout(() => { p.textContent = 'Sebelum dioper, tolong lap layarnya dulu.'; p.style.opacity = '1'; }, 400);
+      setTimeout(() => { const s = document.createElement('p'); s.className = 'cd-lap-small'; s.textContent = 'Kami bisa merasakannya.'; p.after(s); }, 2900);
+    }, 2000);
+  }
 
   /* ---------- player ---------- */
   const queue = [];
@@ -154,6 +370,7 @@
     const p = queue.shift();
     try {
       await sleep(p.delay || 0);
+      if (p.note && window.CapsaMemory) window.CapsaMemory.note(p.note.round, p.note.name, p.note.text, p.note.w);
       for (const s of p.steps || []) { const f = R[s.do]; if (f) { try { f(s); } catch (e) { console.warn('[stage]', s.do, e); } } await sleep(nextOf(s)); }
     } catch (e) { console.warn('[stage]', e); }
     busy = false; run();
@@ -224,11 +441,12 @@
     }
     const panel = document.querySelector('.stats-panel');
     if (panel && window.CapsaComedy && !panel.querySelector('.cd-demos')) {
-      const demos = ['interesting', 'ez-callback', 'learned-nothing', 'wanted-poster', 'revenge-receipt', 'monte-carlo', 'mental-health', 'slow-replay', 'escalation', 'exe-crash', 'sealed-13', 'courtroom'];
+      const demos = ['kenangan', 'survei', 'noted', 'prasasti', 'mic-dibuka', 'undangan', 'cctv', 'pembukaan', 'garis-polisi', 'arsip', 'hening', 'ganti-dukungan', 'laporan-kinerja', 'penyebab', 'disarankan', 'patch-notes', 'sistem-ikut-main', 'harapan', 'ez-callback', 'learned-nothing'];
       const div = document.createElement('div'); div.className = 'tests cd-demos';
       div.innerHTML = `<span>Tes komedi:</span>${demos.map((id) => `<button class="chip" data-cd-demo="${id}">${id}</button>`).join('')}${mem.match().rounds.length ? '<button class="chip" data-cd-sum="1">laporan</button>' : ''}`;
       panel.appendChild(div);
     }
+    decorate(); lapCheck(v);
   });
   document.addEventListener('click', (e) => {
     const s = e.target.closest('[data-cd-sum]'); if (s) { e.stopPropagation(); return openSummary(); }
@@ -310,8 +528,65 @@
 .cd-modal{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px;overflow:auto}
 .cd-sum{width:min(420px,100%);display:grid;gap:8px}.cd-sum-h{font-weight:700;margin-top:6px;letter-spacing:.06em;font-size:12px;text-transform:uppercase}
 .cd-sum .btn{justify-self:center;margin-top:6px}
-@media (prefers-reduced-motion:reduce){.cd-el,.cd-el.in{transition:opacity .2s}.cd-glitch #app,.cd-rp-cards .card,.cd-typing i{animation:none}}`;
+.cd-n-cal{background:#fff;color:#d1262b;border:1px solid #ddd;display:grid;place-items:center}.cd-n-cal b{font-size:11px;color:#111}
+.cd-mem{left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);transform:translateY(16px);display:flex;gap:12px;align-items:center;background:#fff;color:#111;border-radius:16px;padding:10px 14px 10px 10px;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:calc(100vw - 32px);font-family:-apple-system,"Segoe UI",Roboto,Rubik,sans-serif}
+.cd-mem.in{transform:none}
+.cd-mem-thumb{--cw:40px;transform:rotate(-6deg)}.cd-mem-thumb .card{box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.cd-mem-txt{display:grid;gap:1px}.cd-mem-txt b{font-size:14px}.cd-mem-txt span{font-size:12px;color:#555}.cd-mem-txt small{font-size:11px;color:#888}
+.cd-memorial{left:50%;top:40%;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:6px;text-align:center;font-family:Georgia,serif;color:#e8e2d6}
+.cd-mm-cards{display:flex;gap:6px;--cw:62px;filter:grayscale(1) contrast(.9);padding:8px;border:1px solid rgba(232,226,214,.5);background:rgba(0,0,0,.35)}
+.cd-mm-l1{font-size:15px;letter-spacing:.06em}.cd-mm-l2{font-size:13px;font-style:italic;opacity:.85}
+.cd-dim{inset:0;background:rgba(0,0,0,.55)}
+.cd-mic{transform:translate(-50%,0);display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.85);color:#fff;font:500 14px/1.2 Rubik,system-ui,sans-serif;padding:8px 14px;border-radius:99px;white-space:nowrap}
+.cd-mic-i{width:18px;height:18px;animation:cdPulse 1.2s ease-in-out infinite}.cd-mic.closed .cd-mic-i{animation:none;opacity:.4}
+@keyframes cdPulse{50%{opacity:.35}}
+.cd-cctv-on #app{filter:grayscale(1) contrast(1.25) brightness(.85)}
+.cd-cctv{inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 1px,transparent 1px 3px),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");display:grid;place-items:center;align-content:center;gap:16px;animation:cdNoise .25s steps(3) infinite}
+@keyframes cdNoise{50%{background-position:0 0,40px 70px}}
+.cd-cctv-tag{position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:16px;color:#fff;font:600 13px/1 "Courier New",monospace;letter-spacing:.08em;text-shadow:0 0 4px #000}
+.cd-cctv-tag::first-letter{color:#ff3b3b}
+.cd-cctv-cards{display:flex;gap:6px;--cw:clamp(52px,12vw,80px);filter:grayscale(1);animation:cdSlow 4s ease-out both}
+.cd-cctv-cap{font:500 17px/1.3 "Courier New",monospace;color:#fff;background:rgba(0,0,0,.7);padding:6px 12px}
+.cd-tape{inset:0;display:grid;place-items:center;overflow:hidden}
+.cd-tape-band{width:160vw;transform:rotate(-14deg) translateX(-40vw);background:repeating-linear-gradient(45deg,#f5c400 0 28px,#111 28px 40px);padding:6px 0;box-shadow:0 6px 18px rgba(0,0,0,.5);transition:transform .5s cubic-bezier(.2,.9,.3,1)}
+.cd-tape.in .cd-tape-band{transform:rotate(-14deg) translateX(0)}
+.cd-tape-band span{display:block;background:#f5c400;color:#111;font:900 18px/1.6 Rubik,system-ui,sans-serif;letter-spacing:.12em;white-space:nowrap;overflow:hidden}
+.cd-archive{left:50%;top:50%;transform:translate(-50%,-46%);width:min(360px,calc(100vw - 32px));background:#c9a46a;color:#2a1c0b;padding:18px 18px 16px;border-radius:4px 14px 6px 6px;box-shadow:0 18px 40px rgba(0,0,0,.5);font-family:"Courier New",monospace}
+.cd-archive.in{transform:translate(-50%,-50%)}
+.cd-ar-tab{position:absolute;top:-18px;left:0;background:#c9a46a;padding:4px 14px;border-radius:6px 6px 0 0;font-weight:700;font-size:13px;letter-spacing:.08em}
+.cd-ar-lines{background:#f6efe1;padding:12px;display:grid;gap:6px;font-size:13px;min-height:90px}
+.cd-ar-stamp{position:absolute;right:18px;bottom:14px;transform:rotate(-12deg);color:#c0171d;border:3px solid #c0171d;font-weight:900;font-size:22px;padding:0 10px;letter-spacing:.1em}
+.cd-reco{right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);transform:translateY(16px);width:min(300px,calc(100vw - 32px));background:#0f0f0f;color:#f1f1f1;border-radius:12px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.5);font-family:Roboto,Rubik,system-ui,sans-serif}
+.cd-reco.in{transform:none}
+.cd-reco-thumb{position:relative;display:flex;justify-content:center;gap:6px;padding:16px;background:#2b2b2b;--cw:46px}
+.cd-reco-thumb span{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.85);font-size:11px;padding:1px 5px;border-radius:3px}
+.cd-reco-meta{padding:10px 12px;display:grid;gap:2px}.cd-reco-meta b{font-size:14px}.cd-reco-meta small{font-size:12px;color:#aaa}
+.cd-patch{left:50%;top:50%;transform:translate(-50%,-46%);width:min(400px,calc(100vw - 28px));background:#16181d;color:#e8eaef;border:1px solid #2e333d;border-radius:14px;padding:16px 18px;box-shadow:0 20px 50px rgba(0,0,0,.55);display:grid;gap:10px;font-family:Rubik,system-ui,sans-serif}
+.cd-patch.in{transform:translate(-50%,-50%)}
+.cd-pt-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.cd-pt-head code{font-size:12px;color:#8ab4f8}
+.cd-patch ul{margin:0;padding-left:18px;display:grid;gap:6px;font-size:14px;line-height:1.35}
+.cd-patch .btn{justify-self:end}
+.cd-still{left:50%;top:44%;transform:translate(-50%,-50%);width:min(340px,calc(100vw - 32px));background:rgba(12,12,14,.94);color:#fff;border-radius:10px;padding:18px;display:grid;gap:12px;font-family:Rubik,system-ui,sans-serif;text-align:center}
+.cd-st-q{font-size:17px}.cd-st-bar{height:4px;background:rgba(255,255,255,.2);border-radius:2px;overflow:hidden}.cd-st-bar span{display:block;height:100%;width:100%;background:#fff}
+.cd-still .btn{justify-self:center;color:#fff}
+.cd-spot{inset:0;display:grid;place-items:center;background:radial-gradient(circle at 50% 45%,transparent 0 90px,rgba(0,0,0,.82) 170px)}
+.cd-spot-cards{--cw:clamp(70px,16vw,110px);animation:cdSlow 2s ease-out both}
+.cd-seat-note{grid-column:1/-1;font-size:11px;color:var(--muted,#9dbcae);font-style:italic}
+.cd-ribbon{position:absolute;top:0;right:0;width:26px;height:26px;background:linear-gradient(135deg,transparent 50%,#111 50%);border-top-right-radius:12px}
+.seat{position:relative}
+.cd-approve{position:absolute;top:-10px;right:-12px;background:#1f9d55;color:#fff;font:700 11px/1 Rubik,system-ui,sans-serif;padding:4px 8px;border-radius:99px;transform:rotate(8deg);box-shadow:0 2px 0 rgba(0,0,0,.3)}
+.cd-fake-seat{opacity:.92;border-style:dashed!important;animation:cdSlideIn .4s ease-out both}
+@keyframes cdSlideIn{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:.92}}
+.cd-gold{box-shadow:0 0 0 2px #f2c14e inset,0 0 24px rgba(242,193,78,.6)!important}
+.cd-lap-small{margin:0;font-size:12px;color:var(--muted,#9dbcae)}
+.cd-credits{position:fixed;inset:0;z-index:70;background:#000;color:#fff;overflow:hidden;display:grid;place-items:center;transition:opacity .4s}
+.cd-credits.out{opacity:0}
+.cd-cr-roll{text-align:center;font-family:Georgia,serif;animation:cdRoll 14s linear forwards;padding:0 20px}
+.cd-cr-roll p{margin:0 0 10px;font-size:16px;letter-spacing:.04em}.cd-cr-roll p:first-child{font-size:28px;letter-spacing:.2em;margin-bottom:24px}.cd-cr-gap{height:18px}
+@keyframes cdRoll{from{transform:translateY(60vh)}to{transform:translateY(-110%)}}
+.cd-credits .btn{position:absolute;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);color:#fff;border-color:#555}
+@media (prefers-reduced-motion:reduce){.cd-el,.cd-el.in{transition:opacity .2s}.cd-glitch #app,.cd-rp-cards .card,.cd-typing i,.cd-cctv,.cd-cctv-cards,.cd-spot-cards,.cd-mic-i,.cd-cr-roll{animation:none}.cd-cr-roll{transform:none}}`;
   document.head.appendChild(css);
 
-  window.CapsaStage = { play: (perf) => { queue.push(perf); run(); }, openSummary, sound };
+  window.CapsaStage = { play: (perf) => { queue.push(perf); run(); }, openSummary, sound, decorate, credits };
 })();
