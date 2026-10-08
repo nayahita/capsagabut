@@ -316,6 +316,19 @@ button.card[aria-pressed="true"]{transform:translateY(-18px);box-shadow:0 0 0 3p
 .zone.my-turn{border-color:var(--brass);box-shadow:0 0 0 1px var(--brass) inset}
 button,.card{touch-action:manipulation}
 .card{-webkit-user-select:none;user-select:none}
+.stats-panel{border:1px solid var(--felt-line);border-radius:14px;padding:14px 16px;background:rgba(0,0,0,.2);display:grid;gap:10px;min-width:0}
+.stats-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.stats-head h3{margin:0;font-family:var(--f-display);font-size:19px;color:var(--brass)}
+.stats-note{font-size:12px;color:var(--muted)}
+.stats-scroll{overflow-x:auto}
+.stats-table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stats-table th,.stats-table td{padding:7px 10px;border-bottom:1px solid var(--felt-line);text-align:right}
+.stats-table thead th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.stats-table th[scope=row],.stats-table thead th:first-child{text-align:left}
+.stats-table th[scope=row]{font-weight:600;position:sticky;left:0;background:var(--felt-deep)}
+.stats-table .empty{text-align:left;color:var(--muted)}
+.stats-actions{display:flex;gap:8px;flex-wrap:wrap}
+.stats-warn{margin:0;color:var(--danger);font-size:13px}
 .mode-desc{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:44ch}
 .tag-mayhem{color:#ffd166}
 
@@ -722,13 +735,17 @@ function comboFx(combo,who,i,cards){
   }
 }
 
+/* ---------- public effects API (used by src/reactions.js) ---------- */
+window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardCenter,particle:fxAdd,mascotSVG,
+  emote:(i,e)=>emote(i,e,true),audio:()=>{const a=ac();return a?{ctx:a,out:BUS}:null},soundOn:()=>soundMode!=='off'};
+
 /* ---------- state ---------- */
 let setup={n:4,names:['','','',''],triple:true,bomb:false,timer:30,bombWin:true,autoSkip:true,mode:'normal',style:'local',myName:'',joinCode:''};
 try{const s=JSON.parse(localStorage.getItem('capsa-setup')||'null');if(s)Object.assign(setup,s)}catch(e){}
 setup.joinCode='';
 const hashCode=(location.hash||'').slice(1).toUpperCase();
 if(/^[A-Z]{4}$/.test(hashCode)){setup.style='online';setup.joinCode=hashCode}
-let G=null, showRules=false, confirmReset=false, picker=null;
+let G=null, showRules=false, confirmReset=false, picker=null, showStats=false, statsAll=false, statsArm=false;
 const saveSetup=()=>{try{localStorage.setItem('capsa-setup',JSON.stringify({...setup,joinCode:''}))}catch(e){}};
 const optsFromSetup=()=>({triple:setup.triple,bomb:setup.bomb,timer:setup.timer,bombWin:setup.bombWin,autoSkip:setup.autoSkip,mode:setup.mode});
 const isOnline=()=>!!(G&&G.online);
@@ -738,7 +755,7 @@ function newGame(){
   const n=setup.n;
   G={n,opts:optsFromSetup(),round:0,lastWinner:null,sortMode:'rank',
      players:Array.from({length:n},(_,i)=>({name:(setup.names[i]||'').trim()||`Pemain ${i+1}`,hand:[],score:0,last:''}))};
-  saveSetup();startRound();
+  saveSetup();fact('game:start',{names:G.players.map(p=>p.name)});startRound();
 }
 function log(t){G.log.unshift(t);G.log=G.log.slice(0,7)}
 /* every sound/visual effect goes through here: played locally offline, broadcast to every phone online */
@@ -748,7 +765,10 @@ function fx(ev){
     NET.room.child('events').push(e);
   }else playEvent(ev);
 }
+/* plain facts for src/events.js; the core never names game events itself */
+function fact(type,data){fx({t:'fact',type,data})}
 function playEvent(ev){
+  if(ev.t==='fact'){if(window.CapsaEvents)window.CapsaEvents.ingest(ev.type,ev.data);return}
   if(!G)return;
   switch(ev.t){
     case 'combo':SFX.card();comboFx({name:ev.name,key:ev.key,size:(ev.cards||[]).length},ev.who,ev.seat,ev.cards||[]);break;
@@ -782,6 +802,7 @@ function startRound(){
     starter=G.lastWinner;log(`${G.players[starter].name} menang ronde lalu, jalan duluan`);
   }
   G.turn=starter;G.must=must;G.hint=null;G.deadline=null;
+  fact('round:start',{round:G.round,names:G.players.map(p=>p.name),scores:G.players.map(p=>p.score),starter});
   if(isOnline())reveal();else G.phase='handoff';
   render();
 }
@@ -802,6 +823,7 @@ function doPlay(){
   p.last=r.combo.name;G.must=null;G.sel=new Set();G.hint=null;
   log(`${p.name}: ${r.combo.name} ${G.table.cards.map(label).join(' ')}`);
   fx({t:'combo',seat:G.turn,who:p.name,name:r.combo.name,key:r.combo.key,cards:G.table.cards});
+  fact('play',{seat:G.turn,name:p.name,combo:r.combo.name,cat:r.combo.cat,size:r.combo.size,counts:G.players.map(q=>q.hand.length)});
   if(r.combo.cat>=4&&G.opts.bombWin){log(`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
   if(!p.hand.length) return endRound(G.turn,'habis');
   if(G.opts.autoSkip&&nobodyCanAnswer()){
@@ -818,7 +840,8 @@ function nobodyCanAnswer(){
 }
 function doPass(){
   if(!G.table) return;
-  const p=G.players[G.turn];p.last='Pass';G.sel=new Set();log(`${p.name} pass`);fx({t:'pass'});advance();
+  const p=G.players[G.turn];p.last='Pass';G.sel=new Set();log(`${p.name} pass`);fx({t:'pass'});
+  fact('pass',{seat:G.turn,name:p.name,timeout:false});advance();
 }
 function advance(){
   const t=(G.turn+1)%G.n;
@@ -838,7 +861,8 @@ function timeout(){
   if(!G||G.phase!=='turn') return;
   const p=G.players[G.turn];G.deadline=null;
   if(G.table){
-    const who=G.turn;p.last='Pass';G.sel=new Set();log(`${p.name} kehabisan waktu, otomatis pass`);advance();
+    const who=G.turn;p.last='Pass';G.sel=new Set();log(`${p.name} kehabisan waktu, otomatis pass`);
+    fact('pass',{seat:who,name:p.name,timeout:true});advance();
     fx({t:'timeout',seat:who});
   }else{
     const c=G.must!=null?G.must:Math.min(...p.hand);
@@ -874,6 +898,7 @@ setInterval(()=>{
 function endRound(w,how){
   G.winHow=how;G.deadline=null;
   fx({t:'win',seat:w,who:G.players[w].name,how});
+  const scoresBefore=G.players.map(p=>p.score),counts=G.players.map(p=>p.hand.length);
   let total=0;
   G.result=G.players.map((p,i)=>{
     if(i===w) return {c:0,m:1,pen:0,hand:[]};
@@ -881,6 +906,8 @@ function endRound(w,how){
     total+=pen;p.score-=pen;return {c,m,pen,hand:[...p.hand]};
   });
   G.players[w].score+=total;G.result[w].gain=total;
+  fact('round:end',{round:G.round,winner:w,how,names:G.players.map(p=>p.name),counts,penalties:G.result.map(r=>r.pen),
+    scoresBefore,scoresAfter:G.players.map(p=>p.score),delay:how==='bomb'?3600:1900});
   G.lastWinner=w;G.phase='end';render();
 }
 function uiPlay(){
@@ -1028,7 +1055,7 @@ function hostStart(){
   G={n:list.length,opts:{...optsFromSetup(),...(NET.meta.opts||{})},round:0,lastWinner:null,sortMode:'rank',uids:list.map(x=>x[0]),
      players:list.map(([,p])=>({name:p.name,hand:[],score:0,last:''})),
      online:{me:list.findIndex(x=>x[0]===NET.uid),isHost:true}};
-  NET.lastPub='';startRound();flushActions();
+  NET.lastPub='';fact('game:start',{names:G.players.map(p=>p.name)});startRound();flushActions();
 }
 function hostRestore(s,hands){
   G={n:s.n,opts:s.opts,uids:s.uids,round:s.round,lastWinner:s.lastWinner>=0?s.lastWinner:null,sortMode:'rank',
@@ -1130,16 +1157,26 @@ function headerHTML(){
   let meta;
   if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v7`;
+  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v8`;
   const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
     <div class="top-actions">
       <button class="btn" data-act="sound" title="Ganti paket suara: Klasik → Meme → Mati">Suara: ${SOUND_LABEL[soundMode]}</button>
       <button class="btn" data-act="rules" aria-expanded="${showRules}">${showRules?'Tutup aturan':'Aturan'}</button>
+      <button class="btn" data-act="stats" aria-expanded="${showStats}">${showStats?'Tutup statistik':'Statistik'}</button>
       ${G?`<button class="btn ${confirmReset?'warn':''}" data-act="reset">${confirmReset?'Yakin? Klik lagi':leaveLabel}</button>`:''}
     </div>
-  </header>${showRules?rulesHTML():''}`;
+  </header>${showRules?rulesHTML():''}${showStats?statsHTML():''}`;
+}
+function statsHTML(){
+  if(!window.CapsaStats)return '<section class="stats-panel"><p>Modul statistik belum ke-load.</p></section>';
+  const names=G&&!statsAll?G.players.map(p=>p.name):null;
+  const ev=(window.CAPSA_REACTIONS&&window.CAPSA_REACTIONS.events)||{};
+  const label=k=>k.toLowerCase().split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
+  return window.CapsaStats.panelHTML(names).replace('</section>',
+    `${statsArm?'<p class="stats-warn" role="status">Klik <b>Reset statistik</b> sekali lagi buat hapus semua data.</p>':''}
+    ${Object.keys(ev).length?`<div class="tests"><span>Tes reaksi:</span>${Object.keys(ev).map(k=>`<button class="chip" data-rx-test="${k}">${label(k)}</button>`).join('')}</div>`:''}</section>`);
 }
 function optionsHTML(){
   return `<div><label class="lbl">Mode</label>
@@ -1335,6 +1372,7 @@ app.addEventListener('click',e=>{
   if(act==='close-picker'){picker=null;return render()}
   if(act==='sound'){setSoundMode(SOUND_MODES[(SOUND_MODES.indexOf(soundMode)+1)%SOUND_MODES.length]);return render()}
   if(b.dataset.soundSet){setSoundMode(b.dataset.soundSet);return render()}
+  if(b.dataset.rxTest){if(window.CapsaReactions)window.CapsaReactions.test(b.dataset.rxTest);return}
   if(b.dataset.test){const t=b.dataset.test;if(t.startsWith('emote.'))SFX.emote[t.slice(6)]();else SFX[t]();return}
   if(b.dataset.card!=null){if(!G||!myTurn())return;const c=+b.dataset.card;G.hint=null;G.sel.has(c)?G.sel.delete(c):G.sel.add(c);return render()}
   if(b.dataset.quick!=null){
@@ -1344,6 +1382,9 @@ app.addEventListener('click',e=>{
   }
   switch(act){
     case 'rules':showRules=!showRules;break;
+    case 'stats':showStats=!showStats;statsAll=false;statsArm=false;break;
+    case 'stats-all':statsAll=true;break;
+    case 'stats-reset':if(!statsArm){statsArm=true;break}statsArm=false;if(window.CapsaStats)window.CapsaStats.reset();break;
     case 'reset':if(!confirmReset){confirmReset=true;break}confirmReset=false;if(NET)return leaveRoom();G=null;break;
     case 'setup':G=null;break;
     case 'start':return newGame();
@@ -1383,6 +1424,10 @@ if(savedRoom()&&setup.style==='online'&&!hashCode){/* offer resume via button; n
 else if(hashCode&&savedRoom()===hashCode){joinRoom(hashCode)}
 
 </script>
+<script src="src/reactions.config.js"></script>
+<script src="src/events.js"></script>
+<script src="src/stats.js"></script>
+<script src="src/reactions.js"></script>
 <script>if("serviceWorker" in navigator&&location.protocol==="https:"){addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}</script>
 </body>
 </html>

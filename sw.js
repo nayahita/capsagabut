@@ -1,6 +1,13 @@
-// Offline support: the game page and icons are cached; the page itself is always fetched fresh when online.
-const CACHE = 'capsa-v7';
-const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable.png', './apple-touch-icon.png'];
+// Offline support. Game files are fetched fresh when online (so updates show up right away)
+// and served from the cache when offline.
+const CACHE = 'capsa-v8';
+const CORE = [
+  './', './index.html', './manifest.json',
+  './icon-192.png', './icon-512.png', './icon-maskable.png', './apple-touch-icon.png',
+  './src/reactions.config.js', './src/events.js', './src/stats.js', './src/reactions.js',
+  './audio/win.wav', './audio/lose.wav', './audio/bad-beat.wav', './audio/comeback.wav', './audio/win-streak.wav',
+  './audio/loss-streak.wav', './audio/upset.wav', './audio/perfect.wav', './audio/revenge.wav',
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
@@ -19,22 +26,24 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Game page: network first so updates show up right away, cache when offline.
-  if (req.mode === 'navigate' || (url.origin === location.origin && url.pathname.endsWith('.html'))) {
+  // Our own files: network first, cache as fallback.
+  if (url.origin === location.origin) {
     e.respondWith(
       fetch(req)
-        .then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put('./index.html', copy)); return res; })
-        .catch(() => caches.match('./index.html'))
+        .then((res) => {
+          if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req.mode === 'navigate' ? './index.html' : req, copy)); }
+          return res;
+        })
+        .catch(() => caches.match(req.mode === 'navigate' ? './index.html' : req).then((hit) => hit || caches.match(req, { ignoreSearch: true })))
     );
     return;
   }
 
-  // Icons, manifest, fonts: cache first.
-  if (url.origin === location.origin || url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com')) {
+  // Fonts: cache first.
+  if (url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com')) {
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-        if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
-        return res;
+        const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); return res;
       }))
     );
   }

@@ -44,6 +44,74 @@ Catatan teknis:
 - **Timer per giliran:** default 30 detik (bisa diganti 15, 60, atau dimatiin di layar awal). Timer mulai pas kartu dibuka. Kalau waktu habis, pemain otomatis Pass. Kalau dia lagi buka meja, otomatis buang kartu terkecil.
 - **Cepat pilih:** tombol di bawah kartu yang nampilin semua kombinasi yang bisa dibuang sekarang (Pair, Straight, Full House, dan lain-lain), plus jumlah pilihannya. Klik sekali buat milih kombinasi paling kecil, klik lagi buat ganti ke yang lebih gede, terus klik **Buang**.
 
+## Event & reaksi
+
+Pas ronde selesai, game nyari kejadian seru terus nampilin **kartu judgement** di atas layar: roast, baris statistik, suara, dan efek. Di mode online, kartunya muncul di semua HP.
+
+| Event | Kapan kejadian |
+|---|---|
+| `PLAYER_WIN` | Pemain menang ronde |
+| `PLAYER_LOSE` | Pemain kalah (kartunya cuma muncul kalau sisa kartunya ≥ 6) |
+| `BAD_BEAT` | Pemain kalah padahal sisa kartunya tinggal ≤ 2 |
+| `BIG_COMEBACK` | Pemenang sempet ketinggalan ≥ 5 kartu dari yang paling sedikit |
+| `WIN_STREAK` | Menang ≥ 3 ronde berturut-turut |
+| `LOSS_STREAK` | Kalah ≥ 4 ronde berturut-turut |
+| `UPSET_WIN` | Pemenang lagi paling bontot di klasemen, ketinggalan ≥ 10 poin dari yang teratas (min. 3 pemain, mulai ronde 2) |
+| `PERFECT_WIN` | Menang tanpa pass sekali pun di ronde itu |
+| `REVENGE_WIN` | Yang paling parah kalahnya di ronde lalu, ronde ini ngalahin pemenang ronde lalu |
+
+Angka-angka batasnya ada di bagian atas `src/events.js` (`badBeatMaxCards`, `comebackDeficit`, dan seterusnya).
+
+### Struktur file
+
+```
+index.html                 mesin game. Cuma ngirim fakta: game:start, round:start, play, pass, round:end
+src/events.js              event bus + detektor: fakta → PLAYER_WIN, BAD_BEAT, dst.
+src/stats.js               statistik pemain, kesimpen di device (tombol "Statistik" di atas)
+src/reactions.js           mesin reaksi: prioritas, cooldown, antrean, kartu, efek, audio
+src/reactions.config.js    ← yang perlu diedit: teks roast, suara, efek, prioritas, cooldown
+audio/                     suara reaksi (original, aman). Lihat audio/README.md buat ganti
+```
+
+Mesin game gak tahu apa-apa soal event atau reaksi. Jadi nambah, ngubah, atau ngapus reaksi gak perlu nyentuh `index.html`.
+
+### Biar gak spam
+
+Kalau banyak event kejadian barengan:
+1. Event yang masuk dalam 350 ms dinilai bareng.
+2. Kalau satu event kena beberapa pemain sekaligus, yang ditampilin satu aja (diatur `pickBy`, misalnya yang minus-nya paling gede).
+3. Event yang masih kena `cooldownMs` dilewatin, kecuali prioritasnya ≥ 90.
+4. Satu kartu per `group` (`winner` dan `loser`). Event lain di grup yang sama buat pemain yang sama jadi tag kecil di kartu itu, misalnya "Comeback! + Perfect! + Ana menang".
+5. Maksimal 2 kartu per kejadian, tampil gantian, dan antrean maksimal 4 kartu.
+
+Statistik tetap dihitung walaupun kartunya gak muncul.
+
+### Nambah event baru
+
+Di file baru (misalnya `src/my-events.js`, terus tambahin `<script src="src/my-events.js"></script>` setelah `src/reactions.js` di `index.html`), atau langsung di `src/reactions.config.js`:
+
+```js
+// 1. Detektor: kapan event-nya kejadian
+CapsaEvents.defineDetector('round:end', (d, ctx, emit) => {
+  const lawanSemuaBanyak = d.counts.every((c, i) => i === d.winner || c >= 8);
+  if (lawanSemuaBanyak) emit('BLOWOUT', { seat: d.winner });
+});
+
+// 2. Reaksinya
+CAPSA_REACTIONS.events.BLOWOUT = {
+  priority: 85, group: 'winner', tone: 'spicy', mascot: 'laugh', sound: 'win', effect: ['shake', 'confetti'],
+  title: 'Bantai!',
+  texts: ['{name} ngebantai meja. Semua lawan masih pegang ≥ 8 kartu.'],
+};
+```
+
+Data yang dikirim mesin game:
+- `round:end` → `{ round, winner, how, names, counts, penalties, scoresBefore, scoresAfter }`
+- `play` → `{ seat, name, combo, cat, size, counts }`
+- `pass` → `{ seat, name, timeout }`
+
+Buat ngetes tampilan reaksi, buka **Statistik**, terus klik tombol di baris **Tes reaksi**.
+
 ## Mode & aturan rumah
 
 Semua bisa dinyalain/dimatiin di layar awal.
