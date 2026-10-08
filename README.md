@@ -52,12 +52,14 @@ Emote juga muncul otomatis:
 
 ## Paket suara
 
-Tombol **Suara** di pojok atas muter tiga pilihan: **Klasik → Meme → Mati**.
-
-Paket **Meme** ganti suara event jadi gaya meme:
+Default-nya **Meme**. Bisa diganti di layar awal (bagian **Paket suara**, ada tombol tes juga) atau lewat tombol **Suara** di pojok atas, yang muter **Klasik → Meme → Mati**.
 
 | Event | Suara meme |
 |---|---|
+| Buang kartu / Pair | pop kartun |
+| Pass | buzzer salah |
+| Kartu 2 satuan | lonceng |
+| Timer 5 detik terakhir | tik-tok balok kayu |
 | Bom / Straight Flush | sumbu + dentuman bass gede + airhorn |
 | Full House | airhorn |
 | Straight | whoosh + peluit seluncur |

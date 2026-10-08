@@ -245,6 +245,8 @@ button.card[aria-pressed="true"]{transform:translateY(-18px);box-shadow:0 0 0 3p
 .emo-opt:hover{border-color:var(--brass);transform:translateY(-3px)}
 .emo-opt .mascot{width:42px;height:auto}
 .picker .close{margin-left:auto}
+.tests{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.tests span{font-size:12px;color:var(--muted);margin-right:2px}
 .mode-desc{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:44ch}
 .tag-mayhem{color:#ffd166}
 
@@ -383,8 +385,13 @@ const backHTML=(cls='')=>`<div class="card back ${cls}" aria-hidden="true"></div
 
 /* ---------- sound (synthesized, no files) ---------- */
 const SOUND_MODES=['classic','meme','off'],SOUND_LABEL={classic:'Klasik',meme:'Meme',off:'Mati'};
-let soundMode='classic';
-try{const m=localStorage.getItem('capsa-sound-mode');if(SOUND_MODES.includes(m))soundMode=m;else if(localStorage.getItem('capsa-sound')==='0')soundMode='off'}catch(e){}
+let soundMode='meme';
+try{const m=localStorage.getItem('capsa-sound-pack');if(SOUND_MODES.includes(m))soundMode=m}catch(e){}
+function setSoundMode(m){
+  soundMode=m;soundOn=m!=='off';
+  try{localStorage.setItem('capsa-sound-pack',m)}catch(e){}
+  if(m==='meme')M.airhorn();else if(m==='classic')CLASSIC.skip();
+}
 let soundOn=soundMode!=='off';
 let AC=null,BUS=null;
 function ac(){
@@ -412,6 +419,7 @@ function noise(dur=.5,{vol=.4,delay=0,type='lowpass',f0=1200,f1=80,q=1,curve=2}=
 const chord=(fs,dur,o)=>fs.forEach(f=>tone(f,dur,o));
 const CLASSIC={
   timeout:()=>{},
+  pass:()=>tone(240,.14,{type:'triangle',vol:.07,to:170}),
   card:()=>noise(.08,{vol:.35,type:'highpass',f0:2500,f1:6000}),
   tick:()=>tone(1046,.05,{type:'square',vol:.05}),
   pair:()=>{noise(.06,{vol:.3,type:'highpass',f0:2500,f1:6000,delay:.07});tone(660,.08,{vol:.06,delay:.07})},
@@ -447,8 +455,18 @@ const M={
   honk:(d=0)=>[0,.22].forEach(t=>chord([330,349],.18,{type:'square',vol:.07,delay:d+t,lp:1800})),
   scratch:(d=0)=>{noise(.16,{vol:.5,delay:d,type:'bandpass',f0:2600,f1:350,q:3,curve:.4});noise(.13,{vol:.45,delay:d+.17,type:'bandpass',f0:350,f1:2800,q:3,curve:.4})},
   boing:(d=0)=>tone(150,.5,{type:'sine',vol:.18,delay:d,to:420,vib:45,vibRate:24}),
+  pop:(d=0)=>{tone(950,.09,{type:'sine',vol:.22,delay:d,to:220});noise(.025,{vol:.25,delay:d,type:'highpass',f0:2000,f1:4000})},
+  buzzer:(d=0)=>chord([146,155],.5,{type:'square',vol:.08,delay:d,lp:1300}),
+  bell:(d=0)=>{tone(1568,.9,{type:'sine',vol:.12,delay:d});tone(2352,.6,{type:'sine',vol:.06,delay:d});tone(3136,.4,{type:'sine',vol:.04,delay:d})},
+  woodblock:(f=1100,d=0)=>{tone(f,.05,{type:'triangle',vol:.16,delay:d});noise(.02,{vol:.2,delay:d,type:'bandpass',f0:f*2,f1:f*1.5,q:6})},
 };
+let tickAlt=false;
 const MEME={
+  card:()=>M.pop(),
+  pair:()=>M.pop(.1),
+  pass:()=>M.buzzer(),
+  tick:()=>{tickAlt=!tickAlt;M.woodblock(tickAlt?1250:900)},
+  two:()=>M.bell(),
   timeout:()=>M.crickets(),
   triple:()=>M.boing(),
   straight:()=>{CLASSIC.straight();M.slide(.1,true)},
@@ -696,7 +714,7 @@ function nobodyCanAnswer(){
 }
 function doPass(){
   if(!G.table) return;
-  const p=G.players[G.turn];p.last='Pass';G.sel=new Set();log(`${p.name} pass`);advance();
+  const p=G.players[G.turn];p.last='Pass';G.sel=new Set();log(`${p.name} pass`);SFX.pass();advance();
 }
 function advance(){
   const t=(G.turn+1)%G.n;
@@ -790,7 +808,7 @@ function rulesHTML(){
   </section>`;
 }
 function headerHTML(){
-  const meta=G?`Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`:'2–4 pemain · 1 laptop';
+  const meta=G?`Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`:'2–4 pemain · 1 laptop · v6';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
     <div class="top-actions">
@@ -801,7 +819,7 @@ function headerHTML(){
   </header>${showRules?rulesHTML():''}`;
 }
 function setupHTML(){
-  const fan=[32,36,40,44,48].map((c,i)=>{const a=(i-2)*11,x=(i-2)*34;return cardHTML(c+3).replace('class="card','style="transform:translateX(calc(-50% + '+x+'px)) rotate('+a+'deg)" class="card')}).join('');
+  const fan=[28,32,36,40,44].map((c,i)=>{const a=(i-2)*11,x=(i-2)*34;return cardHTML(c+3).replace('class="card','style="transform:translateX(calc(-50% + '+x+'px)) rotate('+a+'deg)" class="card')}).join('');
   const names=Array.from({length:setup.n},(_,i)=>`<input id="name${i}" data-name="${i}" maxlength="16" placeholder="Pemain ${i+1}" value="${esc(setup.names[i]||'')}" aria-label="Nama pemain ${i+1}">`).join('');
   return `<section class="setup">
     <div class="hero">
@@ -819,6 +837,10 @@ function setupHTML(){
       </div>
       <div><label class="lbl">Timer per giliran</label>
         <div class="seg" role="group" aria-label="Timer per giliran">${[[0,'Mati'],[15,'15 dtk'],[30,'30 dtk'],[60,'60 dtk']].map(([k,l])=>`<button data-timer="${k}" aria-pressed="${setup.timer===k}">${l}</button>`).join('')}</div>
+      </div>
+      <div><label class="lbl">Paket suara</label>
+        <div class="seg" role="group" aria-label="Paket suara">${SOUND_MODES.map(k=>`<button data-sound-set="${k}" aria-pressed="${soundMode===k}">${SOUND_LABEL[k]}</button>`).join('')}</div>
+        ${soundMode!=='off'?`<div class="tests"><span>Tes:</span>${[['bomb','Bom'],['full','Full House'],['skip','Auto-skip'],['pass','Pass'],['emote.cry','Nangis'],['emote.angry','Marah']].map(([k,l])=>`<button class="chip" data-test="${k}">${l}</button>`).join('')}</div>`:''}
       </div>
       <div><label class="lbl">Nama (urutan duduk)</label><div class="names">${names}</div></div>
       <div style="display:grid;gap:10px">
@@ -921,12 +943,9 @@ app.addEventListener('click',e=>{
   if(b.dataset.emoteOpen!=null){const i=+b.dataset.emoteOpen;picker=picker===i?null:i;return render()}
   if(b.dataset.emote){const i=picker;picker=null;render();return emote(i,b.dataset.emote)}
   if(act==='close-picker'){picker=null;return render()}
-  if(act==='sound'){
-    soundMode=SOUND_MODES[(SOUND_MODES.indexOf(soundMode)+1)%SOUND_MODES.length];soundOn=soundMode!=='off';
-    try{localStorage.setItem('capsa-sound-mode',soundMode)}catch(e){}
-    if(soundMode==='meme')M.airhorn();else if(soundMode==='classic')SFX.skip();
-    return render();
-  }
+  if(act==='sound'){setSoundMode(SOUND_MODES[(SOUND_MODES.indexOf(soundMode)+1)%SOUND_MODES.length]);return render()}
+  if(b.dataset.soundSet){setSoundMode(b.dataset.soundSet);return render()}
+  if(b.dataset.test){const t=b.dataset.test;if(t.startsWith('emote.'))SFX.emote[t.slice(6)]();else SFX[t]();return}
   if(b.dataset.card!=null){const c=+b.dataset.card;G.hint=null;G.sel.has(c)?G.sel.delete(c):G.sel.add(c);return render()}
   if(b.dataset.quick!=null){
     const g=G.plays[+b.dataset.quick]; if(!g) return;
