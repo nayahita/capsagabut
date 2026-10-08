@@ -27,9 +27,30 @@ Semua bisa dinyalain/dimatiin di layar awal.
 - **Auto-skip** (default nyala): kalau kartu yang lu buang gak bisa dilawan siapa pun, giliran langsung balik ke lu dan lu bebas buka lagi.
 - **Bom bisa makan 2** (default mati): Four of a Kind atau Straight Flush boleh dibuang buat makan kartu 2 satuan.
 
-## Efek
+## Emote
 
-Triple, Straight, Flush, Full House, Four of a Kind, dan Straight Flush punya animasi dan suara sendiri. Bom dapet ledakan, layar goyang, sama kilat. Suara bisa dimatiin lewat tombol **Suara** di pojok atas. Kalau di setelan perangkat lu nyalain "kurangi gerakan", efeknya cuma tulisan doang.
+Tiap kursi pemain punya tombol maskot kecil. Klik buat milih emote: **Ketawa, Nangis, Marah, Mantap, Kaget, Santai**. Maskotnya (kartu remi hidup) muncul di bawah kursi pemain itu, lengkap sama suaranya. Ada jeda 1,5 detik per pemain biar gak dispam.
+
+Emote juga muncul otomatis:
+- Straight → yang buang pasang muka santai
+- Flush → jempol
+- Full House → ketawa
+- Bom → yang buang ketawa, yang lain kaget
+- Auto-skip → salah satu lawan marah
+- Waktu habis → nangis
+- Akhir ronde → pemenang ketawa, yang kalah nangis
+
+## Efek combo
+
+- **Triple:** banner + percikan
+- **Straight:** 5 kartu melesat masuk + garis kecepatan + whoosh
+- **Flush:** hujan simbol bunga + gelombang + kilauan
+- **Full House:** rumah jatuh mantul + confetti + fanfare
+- **Four of a Kind:** bom terbang dari kursi pemain, sumbu nyala, terus meledak (kilat, layar goyang, asap, gelombang kejut)
+- **Straight Flush:** ledakan bom + hujan simbol bunga + paduan suara
+- **Kartu 2 satuan:** bunyi "ting" + kilau
+
+Semua suara dibikin langsung di browser, gak ada file audio. Suara bisa dimatiin lewat tombol **Suara** di pojok atas. Kalau di setelan perangkat lu nyalain "kurangi gerakan", efek gerak dimatiin dan cuma tulisan yang muncul.
 
 ## Aturan
 
