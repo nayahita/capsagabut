@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -378,13 +378,14 @@ button,.card{touch-action:manipulation}
 </head>
 <body>
 <div class="app" id="app"></div>
-
+<script src="src/i18n.js"></script>
 <script>
 const RANKS=['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
 const SUITS=['♦','♣','♥','♠'];
 const NAT=[3,4,5,6,7,8,9,10,11,12,13,1,2];
 const rk=c=>c>>2, st=c=>c&3;
 const label=c=>RANKS[rk(c)]+SUITS[st(c)];
+const I18N=window.CapsaI18n,pick=v=>I18N.pick(v),cname=n=>I18N.combo(n);
 const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const cmp=(a,b)=>{for(let i=0;i<Math.max(a.length,b.length);i++){const d=(a[i]??-1)-(b[i]??-1);if(d)return d}return 0};
 
@@ -507,7 +508,7 @@ function cardHTML(c,{btn=false,sel=false,must=false}={}){
 const backHTML=(cls='')=>`<div class="card back ${cls}" aria-hidden="true"></div>`;
 
 /* ---------- sound (synthesized, no files) ---------- */
-const SOUND_MODES=['classic','meme','off'],SOUND_LABEL={classic:'Klasik',meme:'Rame',off:'Mati'};
+const SOUND_MODES=['classic','meme','off'],SOUND_LABEL={classic:()=>tr('Classic','Klasik'),meme:()=>tr('Loud','Rame'),off:()=>tr('Off','Mati')};
 let soundMode='classic';
 try{const m=localStorage.getItem('capsa-sound-pack');if(SOUND_MODES.includes(m))soundMode=m}catch(e){}
 function setSoundMode(m){
@@ -614,12 +615,12 @@ const SFX=new Proxy({},{get:(_,k)=>(soundMode==='meme'&&MEME[k])||CLASSIC[k]});
 
 /* ---------- mascot + emotes (original card character) ---------- */
 const EMOTES={
-  laugh:{label:'Ketawa',say:'HEHEHE'},
-  cry:{label:'Nangis',say:'HUHUHU'},
-  angry:{label:'Marah',say:'GRRR!'},
-  thumbs:{label:'Mantap',say:'MANTAP!'},
-  shock:{label:'Kaget',say:'HAH?!'},
-  cool:{label:'Santai',say:'EZ'},
+  laugh:{label:{en:'Laugh',id:'Ketawa'},say:{en:'HAHAHA',id:'HEHEHE'}},
+  cry:{label:{en:'Cry',id:'Nangis'},say:{en:'WAAAH',id:'HUHUHU'}},
+  angry:{label:{en:'Angry',id:'Marah'},say:{en:'GRRR!',id:'GRRR!'}},
+  thumbs:{label:{en:'Nice',id:'Mantap'},say:{en:'NICE!',id:'MANTAP!'}},
+  shock:{label:{en:'Shocked',id:'Kaget'},say:{en:'WHAT?!',id:'HAH?!'}},
+  cool:{label:{en:'Chill',id:'Santai'},say:{en:'EZ',id:'EZ'}},
 };
 const INK='#1d1d24',MOUTH='#5a1a14',TEAR='#7cc7ff';
 /* extra faces registered by src/social (CapsaFX.addEmote): { face(h) → svg, bg? } */
@@ -665,7 +666,7 @@ function emote(i,e,auto=false,silent=false){
   if(seat){const r=seat.getBoundingClientRect();x=r.left+r.width/2;y=r.bottom-6}
   x=Math.min(Math.max(x,70),innerWidth-70);y=Math.min(Math.max(y,10),innerHeight-200);
   const d=document.createElement('div');d.className='emote-pop';d.style.left=x+'px';d.style.top=y+'px';d.setAttribute('aria-hidden','true');
-  d.innerHTML=`${mascotSVG(e)}<div class="say">${EMOTES[e].say}</div><div class="from">${esc(G.players[i].name)}</div>`;
+  d.innerHTML=`${mascotSVG(e)}<div class="say">${esc(pick(EMOTES[e].say))}</div><div class="from">${esc(G.players[i].name)}</div>`;
   document.body.appendChild(d);if(!silent&&SFX.emote[e])SFX.emote[e]();setTimeout(()=>d.remove(),2300);
 }
 
@@ -774,7 +775,7 @@ function comboFx(combo,who,i,cards){
     case 'Flush':{const s=st(combo.key[1]);SFX.flush();banner('Flush',who);if(!rm){suitRain(SUITS[s],suitColor(s),75);ring(x,y,'#7cc7ff')}react('thumbs',800);break}
     case 'Full House':SFX.full();banner('Full House',who);if(!rm){houseDrop(x,y);setTimeout(()=>confetti(140),500)}react('laugh',900);break;
     case 'Four of a Kind':case 'Straight Flush':{
-      const sf=combo.name==='Straight Flush',text=sf?'Straight Flush':'BOM!',sub=sf?`Bom · ${who}`:`Four of a Kind · ${who}`;
+      const sf=combo.name==='Straight Flush',text=sf?'Straight Flush':tr('BOMB!','BOM!'),sub=sf?`${tr('Bomb','Bom')} · ${who}`:`Four of a Kind · ${who}`;
       SFX[sf?'sflush':'bomb']();
       if(rm)setTimeout(()=>banner(text,sub,'boom'),650);else bombFx(i,x,y,text,sub,sf?combo.key[2]:null);
       others('shock',1000);react('laugh',1250);break;
@@ -785,7 +786,7 @@ function comboFx(combo,who,i,cards){
 /* ---------- public effects API (used by src/reactions.js) ---------- */
 window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardCenter,particle:fxAdd,mascotSVG,
   emote:(i,e)=>emote(i,e,true),
-  addEmote:(id,d)=>{if(!/^[a-z0-9-]{1,24}$/.test(id)||!d)return false;if(!EMOTES[id])EMOTES[id]={label:String(d.label||id),say:String(d.say||'')};if(typeof d.face==='function')FACES[id]={face:d.face,bg:d.bg};return true},
+  addEmote:(id,d)=>{if(!/^[a-z0-9-]{1,24}$/.test(id)||!d)return false;if(!EMOTES[id])EMOTES[id]={label:d.label||id,say:d.say||''};if(typeof d.face==='function')FACES[id]={face:d.face,bg:d.bg};return true},
   emoteSfx:(e)=>{const s=SFX.emote;if(s&&s[e])s[e]()},
   /* send a social action (src/social): online the room uid and server time are stamped here, not by the module */
   social:(d)=>{if(!G||!d||typeof d.id!=='string')return false;const on=isOnline();const seat=on?G.online.me:d.seat;
@@ -837,7 +838,7 @@ function HOOK(name,d){try{const h=window.CapsaHooks&&window.CapsaHooks[name];if(
 function newGame(){
   const n=setup.n;
   G={n,opts:optsFromSetup(),round:0,lastWinner:null,sortMode:'rank',startedAt:Date.now(),
-     players:Array.from({length:n},(_,i)=>({name:(setup.names[i]||'').trim()||`Pemain ${i+1}`,hand:[],score:0,last:''}))};
+     players:Array.from({length:n},(_,i)=>({name:(setup.names[i]||'').trim()||tr(`Player ${i+1}`,`Pemain ${i+1}`),hand:[],score:0,last:''}))};
   saveSetup();const d=HOOK('gameStart',{names:G.players.map(p=>p.name)});G.pids=d.pids||null;
   fact('game:start',d);startRound();
 }
@@ -852,7 +853,7 @@ function dealtSummary(hand){
   const c={};let sum=0;hand.forEach(x=>{c[rk(x)]=(c[rk(x)]||0)+1;sum+=rk(x)});
   return {twos:c[12]||0,high:(c[11]||0)+(c[12]||0),quad:Object.values(c).some(v=>v===4),score:hand.length?Math.round(sum/hand.length/12*100):0};
 }
-function log(t){G.log.unshift(t);G.log=G.log.slice(0,7)}
+function log(en,id){G.log.unshift(id==null?en:{en,id});G.log=G.log.slice(0,7)}
 /* every sound/visual effect goes through here: played locally offline, broadcast to every phone online */
 function fx(ev){
   if(isOnline()&&NET&&window.firebase){
@@ -872,20 +873,20 @@ function playEvent(ev){
     case 'combo':SFX.card();comboFx({name:ev.name,key:ev.key,size:(ev.cards||[]).length},ev.who,ev.seat,ev.cards||[]);break;
     case 'pass':SFX.pass();break;
     case 'skip':{const d0=ev.d0||200;
-      setTimeout(()=>{banner('Gak ada yang bisa lawan!',`${ev.who} jalan lagi`,'skip');SFX.skip()},d0);
+      setTimeout(()=>{banner(tr('Nobody can beat that!','Gak ada yang bisa lawan!'),tr(`${ev.who} goes again`,`${ev.who} jalan lagi`),'skip');SFX.skip()},d0);
       setTimeout(()=>emote(ev.grumpy,'angry',true),d0+700);break}
     case 'timeout':setTimeout(()=>emote(ev.seat,'cry',true,true),100);break;
     case 'win':setTimeout(()=>{
-        SFX.win();if(!RM.matches)confetti(170);banner(`${ev.who} menang!`,ev.how==='bomb'?'Pakai bom':'Kartu habis');
+        SFX.win();if(!RM.matches)confetti(170);banner(tr(`${ev.who} wins!`,`${ev.who} menang!`),ev.how==='bomb'?tr('With a bomb','Pakai bom'):tr('Out of cards','Kartu habis'));
         setTimeout(()=>{if(!G)return;emote(ev.seat,'laugh',true,true);
           G.players.forEach((_,j)=>{if(j!==ev.seat)setTimeout(()=>emote(j,'cry',true,true),450+j*160)})},900);
       },ev.how==='bomb'?2500:300);break;
     case 'finish':setTimeout(()=>{
-        SFX.finish();banner(`${ev.who} habis!`,ev.how==='bomb'?`Pakai bom · juara ${ev.place}`:`Juara ${ev.place} · sisa ${ev.left} orang`);
+        SFX.finish();banner(tr(`${ev.who} is out!`,`${ev.who} habis!`),ev.how==='bomb'?tr(`With a bomb · #${ev.place}`,`Pakai bom · juara ${ev.place}`):tr(`#${ev.place} · ${ev.left} still playing`,`Juara ${ev.place} · sisa ${ev.left} orang`));
         setTimeout(()=>{if(G)emote(ev.seat,'laugh',true,true)},700);
       },ev.how==='bomb'?2500:250);break;
     case 'lose':setTimeout(()=>{
-        SFX.resolve();banner(`${ev.who} kalah!`,`${ev.first} habis duluan`);
+        SFX.resolve();banner(tr(`${ev.who} loses!`,`${ev.who} kalah!`),tr(`${ev.first} went out first`,`${ev.first} habis duluan`));
         setTimeout(()=>{if(G)emote(ev.seat,'cry',true,true)},600);
       },300);break;
     case 'emote':emote(ev.seat,ev.e,true);break;
@@ -907,9 +908,9 @@ function startRound(){
   let starter=0,must=null;
   if(G.lastWinner==null){
     let min=99;G.players.forEach((p,i)=>p.hand.forEach(c=>{if(c<min){min=c;starter=i}}));
-    must=min;log(`${G.players[starter].name} pegang ${label(min)}, jalan duluan`);
+    must=min;log(`${G.players[starter].name} has ${label(min)} and starts`,`${G.players[starter].name} pegang ${label(min)}, jalan duluan`);
   }else{
-    starter=G.lastWinner;log(`${G.players[starter].name} ${lastMode()?'habis duluan':'menang'} ronde lalu, jalan duluan`);
+    starter=G.lastWinner;log(`${G.players[starter].name} ${lastMode()?'went out first':'won'} last round and starts`,`${G.players[starter].name} ${lastMode()?'habis duluan':'menang'} ronde lalu, jalan duluan`);
   }
   G.turn=starter;G.must=must;G.hint=null;G.deadline=null;
   fact('round:start',{round:G.round,names:G.players.map(p=>p.name),pids:G.pids||null,scores:G.players.map(p=>p.score),starter});
@@ -918,12 +919,14 @@ function startRound(){
 }
 function check(){
   const t=G.table;
-  if(!G.sel.size) return {ok:false,msg:t?`Buang ${t.combo.size} kartu yang lebih gede dari ${t.combo.name} di meja, atau Pass.`:(G.must!=null?`Lu buka meja. Wajib pakai ${label(G.must)}.`:'Meja kosong. Lu bebas buang kombinasi apa aja.')};
+  const tn=t&&cname(t.combo.name);
+  if(!G.sel.size) return {ok:false,msg:t?tr(`Play ${t.combo.size} card${t.combo.size>1?'s':''} higher than the ${tn} on the table, or Pass.`,`Buang ${t.combo.size} kartu yang lebih gede dari ${tn} di meja, atau Pass.`):(G.must!=null?tr(`You lead. You must use the ${label(G.must)}.`,`Lu buka meja. Wajib pakai ${label(G.must)}.`):tr('Empty table. Lead with any combo you like.','Meja kosong. Lu bebas buang kombinasi apa aja.'))};
   const c=classify([...G.sel],G.opts);
-  if(!c) return {ok:false,bad:true,msg:G.sel.size===4?'4 kartu gak sah. Four of a kind harus + 1 kartu.':'Belum jadi kombinasi yang sah'};
-  if(G.must!=null&&!G.sel.has(G.must)) return {ok:false,bad:true,msg:`${c.name}, tapi jalan pertama wajib pakai ${label(G.must)}`};
-  if(t&&!beats(c,t.combo,G.opts)) return {ok:false,bad:true,msg:t.combo.size!==c.size?`Meja lagi ${t.combo.size} kartu, lu harus buang ${t.combo.size} kartu juga`:`${c.name} lu belum bisa makan ${t.combo.name} di meja`};
-  return {ok:true,msg:`${c.name} siap dibuang`,combo:c};
+  if(!c) return {ok:false,bad:true,msg:G.sel.size===4?tr('4 cards isn\'t a play. Four of a Kind needs +1 card.','4 kartu gak sah. Four of a kind harus + 1 kartu.'):tr('Not a valid combo yet','Belum jadi kombinasi yang sah')};
+  const cn=cname(c.name);
+  if(G.must!=null&&!G.sel.has(G.must)) return {ok:false,bad:true,msg:tr(`${cn}, but the first play must include the ${label(G.must)}`,`${cn}, tapi jalan pertama wajib pakai ${label(G.must)}`)};
+  if(t&&!beats(c,t.combo,G.opts)) return {ok:false,bad:true,msg:t.combo.size!==c.size?tr(`The table has ${t.combo.size} card${t.combo.size>1?'s':''}, so you have to play ${t.combo.size} too`,`Meja lagi ${t.combo.size} kartu, lu harus buang ${t.combo.size} kartu juga`):tr(`Your ${cn} can't beat the ${tn} on the table`,`${cn} lu belum bisa makan ${tn} di meja`)};
+  return {ok:true,msg:tr(`${cn} ready to play`,`${cn} siap dibuang`),combo:c};
 }
 function doPlay(){
   const r=check(); if(!r.ok) return;
@@ -931,13 +934,13 @@ function doPlay(){
   p.hand=p.hand.filter(c=>!G.sel.has(c));
   G.table={cards:sortHand(cards,'rank'),combo:r.combo,by:G.turn};
   p.last=r.combo.name;G.must=null;G.sel=new Set();G.hint=null;G.passed=new Set();
-  log(`${p.name}: ${r.combo.name} ${G.table.cards.map(label).join(' ')}`);
+  log(`${p.name}: ${r.combo.name==='Satuan'?'Single':r.combo.name} ${G.table.cards.map(label).join(' ')}`,`${p.name}: ${r.combo.name} ${G.table.cards.map(label).join(' ')}`);
   fx({t:'combo',seat:G.turn,who:p.name,name:r.combo.name,key:r.combo.key,cards:G.table.cards});
   fact('play',{seat:G.turn,name:p.name,combo:r.combo.name,cat:r.combo.cat,size:r.combo.size,cards:G.table.cards,counts:G.players.map(q=>q.hand.length),
     prev:prev?{combo:prev.combo.name,size:prev.combo.size,cards:prev.cards,by:prev.by}:null,t:Date.now(),...turnInfo()});
   if(r.combo.cat>=4&&G.opts.bombWin){
-    if(!lastMode()){log(`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
-    log(`BOM! ${p.name} langsung selesai`);p.hand=[];
+    if(!lastMode()){log(`BOMB! ${p.name} wins the round on the spot`,`BOM! ${p.name} langsung menang ronde`);return endRound(G.turn,'bomb')}
+    log(`BOMB! ${p.name} is out on the spot`,`BOM! ${p.name} langsung selesai`);p.hand=[];
     if(finish(G.turn,'bomb'))return;
   }else if(!p.hand.length){
     if(!lastMode()) return endRound(G.turn,'habis');
@@ -946,7 +949,7 @@ function doPlay(){
   if(G.opts.autoSkip&&nobodyCanAnswer()){
     const me=G.turn,lead=active(me)?me:nextActive(me);
     G.table=null;G.passed=new Set();G.players.forEach(q=>q.last=q.done?q.last:'');
-    log(`Gak ada yang bisa lawan. ${G.players[lead].name} jalan ${lead===me?'lagi':'duluan'}`);
+    log(`Nobody can beat that. ${G.players[lead].name} ${lead===me?'goes again':'leads'}`,`Gak ada yang bisa lawan. ${G.players[lead].name} jalan ${lead===me?'lagi':'duluan'}`);
     fact('skip',{seat:lead,name:G.players[lead].name,by:me});
     fx({t:'skip',who:G.players[lead].name,d0:r.combo.size>=3?1000:200,grumpy:rnd(activeSeats().filter(j=>j!==lead).concat(lead===me?[]:[me]))});
     G.turn=lead;reveal();render();return;
@@ -960,7 +963,7 @@ function nobodyCanAnswer(){
 /* last-loses rule: seat just played its last card (or a bomb). Returns true when the round is over. */
 function finish(seat,how){
   const p=G.players[seat];G.order.push(seat);p.done=G.order.length;p.doneHow=how;p.last=`Juara ${p.done}`;
-  log(`${p.name} habis! Juara ${p.done}`);
+  log(`${p.name} is out! #${p.done}`,`${p.name} habis! Juara ${p.done}`);
   fact('finish',{seat,name:p.name,place:p.done,how,counts:G.players.map(q=>q.hand.length)});
   const left=activeSeats();
   if(left.length<=1){endRound(G.order[0],G.players[G.order[0]].doneHow||how);return true}
@@ -970,7 +973,7 @@ function finish(seat,how){
 function doPass(){
   if(!G.table) return;
   const p=G.players[G.turn],could=findPlays(p.hand,G.table,null,G.opts).map(g=>g.name),hadPlay=could.length>0;
-  p.last='Pass';G.sel=new Set();G.passed.add(G.turn);log(`${p.name} pass`);fx({t:'pass'});
+  p.last='Pass';G.sel=new Set();G.passed.add(G.turn);log(`${p.name} passes`,`${p.name} pass`);fx({t:'pass'});
   fact('pass',{seat:G.turn,name:p.name,timeout:false,hadPlay,could,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by},...turnInfo()});advance();
 }
 function advance(){
@@ -980,7 +983,7 @@ function advance(){
     if(others.every(i=>G.passed&&G.passed.has(i))){
       t=active(owner)?owner:nextActive(owner);
       G.table=null;G.passed=new Set();G.players.forEach(p=>{if(!p.done)p.last=''});
-      log(`Semua pass. ${G.players[t].name} bebas jalan`);
+      log(`Everyone passed. ${G.players[t].name} leads anything`,`Semua pass. ${G.players[t].name} bebas jalan`);
     }
   }
   G.turn=t;G.hint=null;G.deadline=null;
@@ -995,20 +998,20 @@ function timeout(){
   if(!G||G.phase!=='turn') return;
   const p=G.players[G.turn];G.deadline=null;
   if(G.table){
-    const who=G.turn;p.last='Pass';G.sel=new Set();G.passed.add(who);log(`${p.name} kehabisan waktu, otomatis pass`);
+    const who=G.turn;p.last='Pass';G.sel=new Set();G.passed.add(who);log(`${p.name} ran out of time, auto-pass`,`${p.name} kehabisan waktu, otomatis pass`);
     const could=findPlays(p.hand,G.table,null,G.opts).map(g=>g.name);
     fact('pass',{seat:who,name:p.name,timeout:true,hadPlay:could.length>0,could,counts:G.players.map(q=>q.hand.length),table:{combo:G.table.combo.name,by:G.table.by},...turnInfo()});advance();
     fx({t:'timeout',seat:who});
   }else{
     const c=G.must!=null?G.must:Math.min(...p.hand);
-    log(`${p.name} kehabisan waktu, otomatis buang kartu terkecil`);
+    log(`${p.name} ran out of time, lowest card played`,`${p.name} kehabisan waktu, otomatis buang kartu terkecil`);
     G.sel=new Set([c]);doPlay();
   }
 }
 function timerHTML(){
   if(!G.deadline||!G.opts.timer) return '';
   const left=Math.max(0,G.deadline-Date.now()), s=Math.ceil(left/1000), pct=Math.min(100,left/(G.opts.timer*10));
-  return `<div class="timer ${s<=10?'low':''}" id="tmr" role="timer" aria-label="Sisa waktu"><span>Waktu</span><div class="bar"><span style="width:${pct}%"></span></div><b>${s}</b><span>dtk</span></div>`;
+  return `<div class="timer ${s<=10?'low':''}" id="tmr" role="timer" aria-label="${tr('Time left','Sisa waktu')}"><span>${tr('Time','Waktu')}</span><div class="bar"><span style="width:${pct}%"></span></div><b>${s}</b><span>${tr('s','dtk')}</span></div>`;
 }
 setInterval(()=>{
   if(!G||G.phase!=='turn') return;
@@ -1105,15 +1108,15 @@ function fbInit(){
 }
 function netErrText(e){
   const m=String((e&&(e.code||e.message))||e);
-  if(/timeout|script|network/i.test(m))return 'Gagal nyambung ke server. Cek internet lu. Kalau game-nya dibuka dari preview Claude, mode online gak jalan di sana: buka lewat link GitHub Pages.';
-  if(/operation-not-allowed|admin-restricted/i.test(m))return 'Login anonim belum dinyalain di Firebase (Security → Authentication → Anonymous).';
-  if(/permission/i.test(m))return 'Database nolak akses. Cek Rules di Firebase Realtime Database.';
-  return 'Ada error: '+m;
+  if(/timeout|script|network/i.test(m))return tr("Couldn't reach the server. Check your internet. If the game is open in a Claude preview, online mode doesn't work there: open it from the GitHub Pages link.",'Gagal nyambung ke server. Cek internet lu. Kalau game-nya dibuka dari preview Claude, mode online gak jalan di sana: buka lewat link GitHub Pages.');
+  if(/operation-not-allowed|admin-restricted/i.test(m))return tr('Anonymous sign-in is not enabled in Firebase (Security → Authentication → Anonymous).','Login anonim belum dinyalain di Firebase (Security → Authentication → Anonymous).');
+  if(/permission/i.test(m))return tr('The database refused access. Check the Rules in Firebase Realtime Database.','Database nolak akses. Cek Rules di Firebase Realtime Database.');
+  return tr('Error: ','Ada error: ')+m;
 }
 const genCode=()=>Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join('');
 async function createRoom(){
-  const name=myName();if(!name)return setNetMsg('Isi nama lu dulu.',true);
-  saveSetup();netNote='';setNetMsg('Bikin room…');
+  const name=myName();if(!name)return setNetMsg(tr('Enter your name first.','Isi nama lu dulu.'),true);
+  saveSetup();netNote='';setNetMsg(tr('Creating room…','Bikin room…'));
   try{
     const fb=await fbInit();let code=null;
     for(let k=0;k<8&&!code;k++){
@@ -1121,7 +1124,7 @@ async function createRoom(){
       const r=await fb.db.ref('rooms/'+c+'/meta').transaction(cur=>cur===null?{host:fb.uid,status:'lobby',created:firebase.database.ServerValue.TIMESTAMP,lastOpen:firebase.database.ServerValue.TIMESTAMP,opts:optsFromSetup()}:undefined);
       if(r.committed)code=c;
     }
-    if(!code)throw new Error('Gak dapet kode room, coba lagi');
+    if(!code)throw new Error(tr("Couldn't get a room code, try again",'Gak dapet kode room, coba lagi'));
     pruneOldRooms(fb);
     await fb.db.ref('rooms/'+code+'/players/'+fb.uid).set({name,joined:firebase.database.ServerValue.TIMESTAMP,online:true});
     enterRoom(code,fb);
@@ -1135,25 +1138,25 @@ function pruneOldRooms(fb){
 }
 async function joinRoom(code){
   code=(code||'').toUpperCase().trim();
-  if(!/^[A-Z]{4}$/.test(code))return setNetMsg('Kode room harus 4 huruf.',true);
-  saveSetup();netNote='';setNetMsg(`Nyambung ke room ${code}…`);
+  if(!/^[A-Z]{4}$/.test(code))return setNetMsg(tr('A room code is 4 letters.','Kode room harus 4 huruf.'),true);
+  saveSetup();netNote='';setNetMsg(tr(`Joining room ${code}…`,`Nyambung ke room ${code}…`));
   try{
     const fb=await fbInit(),room=fb.db.ref('rooms/'+code);
     let meta=(await room.child('meta').once('value')).val();
-    if(!meta){try{localStorage.removeItem('capsa-room')}catch(e){}return setNetMsg(`Room ${code} gak ketemu. Cek lagi kodenya.`,true)}
+    if(!meta){try{localStorage.removeItem('capsa-room')}catch(e){}return setNetMsg(tr(`Room ${code} not found. Check the code.`,`Room ${code} gak ketemu. Cek lagi kodenya.`),true)}
     if(meta.status==='closed'){
-      if(!myName())return setNetMsg('Isi nama lu dulu.',true);
+      if(!myName())return setNetMsg(tr('Enter your name first.','Isi nama lu dulu.'),true);
       const r=await room.child('meta').transaction(cur=>cur&&cur.status==='closed'?{...cur,host:fb.uid,status:'lobby',lastOpen:firebase.database.ServerValue.TIMESTAMP}:undefined);
       meta=(await room.child('meta').once('value')).val();
-      if(!meta||meta.status==='closed')return setNetMsg('Gagal buka lagi room ini, coba sekali lagi.',true);
-      if(r.committed)netNote=`Room ${code} dibuka lagi. Catatan lama masih ada.`;
+      if(!meta||meta.status==='closed')return setNetMsg(tr("Couldn't reopen this room, try once more.",'Gagal buka lagi room ini, coba sekali lagi.'),true);
+      if(r.committed)netNote=tr(`Room ${code} reopened. The old records are still here.`,`Room ${code} dibuka lagi. Catatan lama masih ada.`);
     }
     const players=(await room.child('players').once('value')).val()||{};
     if(!(players[fb.uid]&&players[fb.uid].name)){
       const name=myName();
-      if(!name)return setNetMsg('Isi nama lu dulu.',true);
-      if(meta.status!=='lobby')return setNetMsg('Game di room ini udah jalan. Minta host bikin room baru, atau tunggu mereka balik ke lobby.',true);
-      if(Object.values(players).filter(p=>p&&p.name).length>=4)return setNetMsg('Room udah penuh (4 orang).',true);
+      if(!name)return setNetMsg(tr('Enter your name first.','Isi nama lu dulu.'),true);
+      if(meta.status!=='lobby')return setNetMsg(tr('A game is already running in this room. Ask the host for a new room, or wait until they are back in the lobby.','Game di room ini udah jalan. Minta host bikin room baru, atau tunggu mereka balik ke lobby.'),true);
+      if(Object.values(players).filter(p=>p&&p.name).length>=4)return setNetMsg(tr('The room is full (4 players).','Room udah penuh (4 orang).'),true);
       await room.child('players/'+fb.uid).set({name,joined:firebase.database.ServerValue.TIMESTAMP,online:true});
     }
     enterRoom(code,fb);
@@ -1212,7 +1215,7 @@ function leaveRoom(){
 function roomGone(){
   detach();NET=null;G=null;picker=null;loreEvent(null,null);
   try{localStorage.removeItem('capsa-room')}catch(e){}
-  setNetMsg('Room udah ditutup sama host.',true);
+  setNetMsg(tr('The host closed the room.','Room udah ditutup sama host.'),true);
 }
 function onRoomChange(){
   if(!NET||!NET.meta)return;
@@ -1310,6 +1313,42 @@ function sendAction(type){
 /* ---------- render ---------- */
 const app=document.getElementById('app');
 function rulesHTML(){
+  return I18N.lang()==='id'?rulesID():rulesEN();
+}
+function rulesEN(){
+  return `<section class="rules" aria-label="Rules">
+  <div><h3>Basics</h3><ul>
+    <li>Rank order: 3 lowest … K, A, <b>2 highest</b>.</li>
+    <li>Suit order: ♦ diamonds &lt; ♣ clubs &lt; ♥ hearts &lt; ♠ spades.</li>
+    <li>13 cards each. With 2–3 players the leftover cards sit out.</li>
+    <li>First round: whoever holds the lowest card (usually 3♦) leads and must play it. After that, last round's winner leads.</li>
+  </ul></div>
+  <div><h3>Combos</h3><ul>
+    <li>Single, Pair, Triple${G&&!G.opts.triple?' (turned off)':''}, or 5 cards.</li>
+    <li>5 cards: Straight &lt; Flush &lt; Full House &lt; Four of a Kind (+1) &lt; Straight Flush.</li>
+    <li>Straights use normal order: A‑2‑3‑4‑5 is lowest, 10‑J‑Q‑K‑A highest. J‑Q‑K‑A‑2 doesn't count.</li>
+    <li>Pair or Single tied on rank? The suit decides.</li>
+  </ul></div>
+  <div><h3>Turns</h3><ul>
+    <li>Play the same kind of combo with the same number of cards, but higher. Or Pass.</li>
+    <li>Passing doesn't knock you out. You can play again next time around.</li>
+    <li>If everyone passes, the last player who played leads anything.</li>
+    ${!G||G.opts.timer?`<li><b>${G?G.opts.timer:setup.timer||30}-second timer</b> per turn. Time's up: auto-Pass, or if you're leading, your lowest card gets played.</li>`:''}
+    <li><b>Quick pick</b> lists every combo you can play right now. Tap once for the lowest, again for the next one up.</li>
+    ${(G?G.opts.bombWin:setup.bombWin)?'<li><b>Bomb wins instantly:</b> playing Four of a Kind or a Straight Flush wins the round on the spot.</li>':''}
+    ${(G?G.opts.bomb:setup.bomb)?'<li><b>Bomb beats a 2:</b> Four of a Kind or a Straight Flush can be played on a single 2.</li>':''}
+    ${(G?G.opts.autoSkip:setup.autoSkip)?"<li><b>Auto-skip:</b> if nobody can beat your play, the turn comes straight back and you lead again.</li>":''}
+    <li><b>Mayhem:</b> every player gets a bomb, a Full House and high cards.</li>
+  </ul></div>
+  <div><h3>Scoring</h3><ul>
+    ${(G?lastMode():setup.lastLoses!==false)?`<li><b>Play until one loses</b> (on): going out is safe, the rest keep playing. The last player still holding cards takes 1 loss. Standings count losses.</li>`:''}
+    <li>Points rule: first player out wins the round.</li>
+    <li>Everyone else loses their remaining cards. 10–12 cards count double, 13 cards (never played) count triple.</li>
+    <li>The winner collects everyone's losses.</li>
+  </ul></div>
+  </section>`;
+}
+function rulesID(){
   return `<section class="rules" aria-label="Aturan main">
   <div><h3>Dasar</h3><ul>
     <li>Urutan angka: 3 paling kecil … K, A, <b>2 paling gede</b>.</li>
@@ -1335,7 +1374,8 @@ function rulesHTML(){
     <li><b>Mayhem:</b> tiap pemain dapet bom, Full House, dan kartu-kartu tinggi.</li>
   </ul></div>
   <div><h3>Poin</h3><ul>
-    <li>Yang habis duluan menang ronde.</li>
+    ${(G?lastMode():setup.lastLoses!==false)?`<li><b>Main sampai satu kalah</b> (nyala): yang habis duluan aman, sisanya lanjut. Yang terakhir masih pegang kartu dapet 1 kalah. Klasemen ngitung jumlah kalah.</li>`:''}
+    <li>Aturan poin: yang habis duluan menang ronde.</li>
     <li>Yang kalah minus sisa kartunya. 10–12 kartu dikali 2, 13 kartu (gak jalan sama sekali) dikali 3.</li>
     <li>Pemenang dapet total minus semua yang kalah.</li>
   </ul></div>
@@ -1343,81 +1383,82 @@ function rulesHTML(){
 }
 function headerHTML(){
   let meta;
-  if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
+  if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}${tr('Round','Ronde')} ${G.round} · ${G.n} ${tr('players','pemain')}${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v13`;
-  const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
+  else meta=`${tr('2–4 players','2–4 pemain')} · ${setup.style==='online'?tr('online','mabar online'):tr('1 device','1 device')} · v13.1`;
+  const leaveLabel=NET?(NET.isHost?tr('Close room','Tutup room'):tr('Leave room','Keluar room')):tr('Change players','Ganti pemain');
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
     <div class="top-actions">
-      <button class="btn" data-act="sound" title="Ganti paket suara: Klasik → Meme → Mati">Suara: ${SOUND_LABEL[soundMode]}</button>
-      <button class="btn" data-act="rules" aria-expanded="${showRules}">${showRules?'Tutup aturan':'Aturan'}</button>
-      <button class="btn" data-act="stats" aria-expanded="${showStats}">${showStats?'Tutup statistik':'Statistik'}</button>
-      ${G?`<button class="btn ${confirmReset?'warn':''}" data-act="reset">${confirmReset?'Yakin? Klik lagi':leaveLabel}</button>`:''}
+      <button class="btn" data-act="sound" title="${tr('Change sound pack: Classic → Loud → Off','Ganti paket suara: Klasik → Rame → Mati')}">${tr('Sound','Suara')}: ${SOUND_LABEL[soundMode]()}</button>
+      <button class="btn" data-act="lang" title="${tr('Bahasa Indonesia','Switch to English')}" aria-label="${tr('Language: English. Switch to Indonesian','Bahasa: Indonesia. Ganti ke English')}">🌐 ${tr('EN','ID')}</button>
+      <button class="btn" data-act="rules" aria-expanded="${showRules}">${showRules?tr('Close rules','Tutup aturan'):tr('Rules','Aturan')}</button>
+      <button class="btn" data-act="stats" aria-expanded="${showStats}">${showStats?tr('Close stats','Tutup statistik'):tr('Stats','Statistik')}</button>
+      ${G?`<button class="btn ${confirmReset?'warn':''}" data-act="reset">${confirmReset?tr('Sure? Tap again','Yakin? Klik lagi'):leaveLabel}</button>`:''}
     </div>
   </header>${showRules?rulesHTML():''}${showStats?statsHTML():''}`;
 }
 function statsHTML(){
-  if(!window.CapsaStats)return '<section class="stats-panel"><p>Modul statistik belum ke-load.</p></section>';
+  if(!window.CapsaStats)return `<section class="stats-panel"><p>${tr("The stats module hasn't loaded.",'Modul statistik belum ke-load.')}</p></section>`;
   const names=G&&!statsAll?G.players.map(p=>p.name):null;
   const ev=(window.CAPSA_REACTIONS&&window.CAPSA_REACTIONS.events)||{};
   const label=k=>k.toLowerCase().split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join(' ');
   return window.CapsaStats.panelHTML(names).replace('</section>',
-    `${statsArm?'<p class="stats-warn" role="status">Klik <b>Reset statistik</b> sekali lagi buat hapus semua data.</p>':''}
-    ${Object.keys(ev).length?`<div class="tests"><span>Tes reaksi:</span>${Object.keys(ev).map(k=>`<button class="chip" data-rx-test="${k}">${label(k)}</button>`).join('')}</div>`:''}</section>`);
+    `${statsArm?`<p class="stats-warn" role="status">${tr('Tap <b>Reset stats</b> once more to delete all data.','Klik <b>Reset statistik</b> sekali lagi buat hapus semua data.')}</p>`:''}
+    ${Object.keys(ev).length?`<div class="tests"><span>${tr('Test reactions:','Tes reaksi:')}</span>${Object.keys(ev).map(k=>`<button class="chip" data-rx-test="${k}">${label(k)}</button>`).join('')}</div>`:''}</section>`);
 }
 function optionsHTML(){
   return `<div><label class="lbl">Mode</label>
         <div class="seg" role="group" aria-label="Mode">${[['normal','Normal'],['mayhem','Mayhem']].map(([k,l])=>`<button data-mode="${k}" aria-pressed="${setup.mode===k}">${l}</button>`).join('')}</div>
-        <p class="mode-desc">${setup.mode==='mayhem'?'Semua pemain dapet kartu gila: masing-masing pegang bom (Four of a Kind atau Straight Flush), Full House, dan kartu-kartu tinggi. Siapa cepat dia menang.':'Kartu dikocok biasa.'}</p>
+        <p class="mode-desc">${setup.mode==='mayhem'?tr('Everyone gets a ridiculous hand: a bomb each (Four of a Kind or Straight Flush), a Full House and high cards. Fastest wins.','Semua pemain dapet kartu gila: masing-masing pegang bom (Four of a Kind atau Straight Flush), Full House, dan kartu-kartu tinggi. Siapa cepat dia menang.'):tr('A normal shuffle.','Kartu dikocok biasa.')}</p>
       </div>
-      <div><label class="lbl">Timer per giliran</label>
-        <div class="seg" role="group" aria-label="Timer per giliran">${[[0,'Mati'],[15,'15 dtk'],[30,'30 dtk'],[60,'60 dtk']].map(([k,l])=>`<button data-timer="${k}" aria-pressed="${setup.timer===k}">${l}</button>`).join('')}</div>
+      <div><label class="lbl">${tr('Turn timer','Timer per giliran')}</label>
+        <div class="seg" role="group" aria-label="${tr('Turn timer','Timer per giliran')}">${[[0,tr('Off','Mati')],[15,tr('15 s','15 dtk')],[30,tr('30 s','30 dtk')],[60,tr('60 s','60 dtk')]].map(([k,l])=>`<button data-timer="${k}" aria-pressed="${setup.timer===k}">${l}</button>`).join('')}</div>
       </div>
-      <div><label class="lbl">Paket suara</label>
-        <div class="seg" role="group" aria-label="Paket suara">${SOUND_MODES.map(k=>`<button data-sound-set="${k}" aria-pressed="${soundMode===k}">${SOUND_LABEL[k]}</button>`).join('')}</div>
-        ${soundMode!=='off'?`<div class="tests"><span>Tes:</span>${[['bomb','Bom'],['full','Full House'],['skip','Auto-skip'],['pass','Pass'],['emote.cry','Nangis'],['emote.angry','Marah']].map(([k,l])=>`<button class="chip" data-test="${k}">${l}</button>`).join('')}</div>`:''}
+      <div><label class="lbl">${tr('Sound pack','Paket suara')}</label>
+        <div class="seg" role="group" aria-label="${tr('Sound pack','Paket suara')}">${SOUND_MODES.map(k=>`<button data-sound-set="${k}" aria-pressed="${soundMode===k}">${SOUND_LABEL[k]()}</button>`).join('')}</div>
+        ${soundMode!=='off'?`<div class="tests"><span>${tr('Test:','Tes:')}</span>${[['bomb',tr('Bomb','Bom')],['full','Full House'],['skip','Auto-skip'],['pass','Pass'],['emote.cry',tr('Cry','Nangis')],['emote.angry',tr('Angry','Marah')]].map(([k,l])=>`<button class="chip" data-test="${k}">${l}</button>`).join('')}</div>`:''}
       </div>
       <div style="display:grid;gap:10px">
-        <label class="check"><input type="checkbox" id="opt-triple" data-opt="triple" ${setup.triple?'checked':''}><span>Boleh buang Triple<small>3 kartu angka sama</small></span></label>
-        <label class="check"><input type="checkbox" id="opt-bombwin" data-opt="bombWin" ${setup.bombWin?'checked':''}><span>Bom langsung menang<small>Yang buang Four of a Kind / Straight Flush langsung menang ronde</small></span></label>
-        <label class="check"><input type="checkbox" id="opt-bomb" data-opt="bomb" ${setup.bomb?'checked':''}><span>Bom bisa makan 2<small>Four of a Kind / Straight Flush boleh dibuang buat makan kartu 2 satuan</small></span></label>
-        <label class="check"><input type="checkbox" id="opt-skip" data-opt="autoSkip" ${setup.autoSkip?'checked':''}><span>Auto-skip<small>Kalau gak ada yang bisa lawan, giliran langsung balik ke yang buang</small></span></label>
-        <label class="check"><input type="checkbox" id="opt-last" data-opt="lastLoses" ${setup.lastLoses!==false?'checked':''}><span>Main sampai satu kalah<small>Yang habis duluan aman, sisanya lanjut lawan-lawanan. Yang terakhir masih pegang kartu kalah. Klasemen ngitung jumlah kalah.</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-triple" data-opt="triple" ${setup.triple?'checked':''}><span>${tr('Allow Triples','Boleh buang Triple')}<small>${tr('3 cards of the same rank','3 kartu angka sama')}</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-bombwin" data-opt="bombWin" ${setup.bombWin?'checked':''}><span>${tr('Bomb wins instantly','Bom langsung menang')}<small>${tr('Playing Four of a Kind / Straight Flush wins the round on the spot','Yang buang Four of a Kind / Straight Flush langsung menang ronde')}</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-bomb" data-opt="bomb" ${setup.bomb?'checked':''}><span>${tr('Bomb beats a 2','Bom bisa makan 2')}<small>${tr('Four of a Kind / Straight Flush can be played on a single 2','Four of a Kind / Straight Flush boleh dibuang buat makan kartu 2 satuan')}</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-skip" data-opt="autoSkip" ${setup.autoSkip?'checked':''}><span>Auto-skip<small>${tr('If nobody can beat a play, the turn goes straight back to whoever played it','Kalau gak ada yang bisa lawan, giliran langsung balik ke yang buang')}</small></span></label>
+        <label class="check"><input type="checkbox" id="opt-last" data-opt="lastLoses" ${setup.lastLoses!==false?'checked':''}><span>${tr('Play until one loses','Main sampai satu kalah')}<small>${tr('Going out first is safe; the rest keep playing. The last one holding cards loses. Standings count losses.','Yang habis duluan aman, sisanya lanjut lawan-lawanan. Yang terakhir masih pegang kartu kalah. Klasemen ngitung jumlah kalah.')}</small></span></label>
       </div>`;
 }
 function setupHTML(){
   const online=setup.style==='online';
   const fan=[28,32,36,40,44].map((c,i)=>{const a=(i-2)*11,x=(i-2)*34;return cardHTML(c+3).replace('class="card','style="transform:translateX(calc(-50% + '+x+'px)) rotate('+a+'deg)" class="card')}).join('');
-  const names=Array.from({length:setup.n},(_,i)=>`<input id="name${i}" data-name="${i}" maxlength="16" placeholder="Pemain ${i+1}" value="${esc(setup.names[i]||'')}" aria-label="Nama pemain ${i+1}">`).join('');
+  const names=Array.from({length:setup.n},(_,i)=>`<input id="name${i}" data-name="${i}" maxlength="16" placeholder="${tr('Player','Pemain')} ${i+1}" value="${esc(setup.names[i]||'')}" aria-label="${tr('Player name','Nama pemain')} ${i+1}">`).join('');
   const saved=savedRoom();
-  const localBlock=`<div><label class="lbl">Jumlah pemain</label>
-        <div class="seg" role="group" aria-label="Jumlah pemain">${[2,3,4].map(k=>`<button data-n="${k}" aria-pressed="${setup.n===k}">${k} orang</button>`).join('')}</div>
+  const localBlock=`<div><label class="lbl">${tr('Players','Jumlah pemain')}</label>
+        <div class="seg" role="group" aria-label="${tr('Players','Jumlah pemain')}">${[2,3,4].map(k=>`<button data-n="${k}" aria-pressed="${setup.n===k}">${k} ${tr('players','orang')}</button>`).join('')}</div>
       </div>
-      <div><label class="lbl">Nama (urutan duduk)</label><div class="names">${names}</div></div>`;
-  const onlineBlock=`<div><label class="lbl" for="my-name">Nama lu</label><div class="names"><input id="my-name" data-myname maxlength="16" placeholder="Nama lu" value="${esc(setup.myName||'')}" autocomplete="nickname"></div></div>
-      ${saved?`<button class="btn" data-act="resume-room" style="justify-self:start">Balik ke room ${esc(saved)}</button>`:''}
-      <div><label class="lbl" for="join-code">Gabung room temen</label>
-        <div class="join"><input id="join-code" data-joincode maxlength="4" placeholder="KODE" value="${esc(setup.joinCode||'')}" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="join-room">Gabung</button></div>
+      <div><label class="lbl">${tr('Names (seating order)','Nama (urutan duduk)')}</label><div class="names">${names}</div></div>`;
+  const onlineBlock=`<div><label class="lbl" for="my-name">${tr('Your name','Nama lu')}</label><div class="names"><input id="my-name" data-myname maxlength="16" placeholder="${tr('Your name','Nama lu')}" value="${esc(setup.myName||'')}" autocomplete="nickname"></div></div>
+      ${saved?`<button class="btn" data-act="resume-room" style="justify-self:start">${tr('Back to room','Balik ke room')} ${esc(saved)}</button>`:''}
+      <div><label class="lbl" for="join-code">${tr("Join a friend's room",'Gabung room temen')}</label>
+        <div class="join"><input id="join-code" data-joincode maxlength="4"  placeholder="${tr('CODE','KODE')}" value="${esc(setup.joinCode||'')}" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="join-room">${tr('Join','Gabung')}</button></div>
       </div>
-      <div class="or-row"><span>atau jadi host</span></div>
-      <button class="btn" data-act="create-room" style="justify-self:start">Bikin room baru</button>
+      <div class="or-row"><span>${tr('or host one','atau jadi host')}</span></div>
+      <button class="btn" data-act="create-room" style="justify-self:start">${tr('Create a new room','Bikin room baru')}</button>
       ${netMsg?`<p class="netmsg ${netMsg.bad?'bad':''}" role="status">${esc(netMsg.text)}</p>`:''}
-      <p class="hint">Pengaturan di bawah ini dipakai kalau lu yang bikin room.</p>
-      <label class="check"><input type="checkbox" id="opt-same" data-opt="sameRoom" ${setup.sameRoom?'checked':''}><span>Main di satu tempat<small>Semua duduk bareng: suara meja dan suara komedi cuma keluar dari HP host biar gak gema. Suara giliran lu tetap di HP masing-masing.</small></span></label>`;
+      <p class="hint">${tr('The settings below apply when you create the room.','Pengaturan di bawah ini dipakai kalau lu yang bikin room.')}</p>
+      <label class="check"><input type="checkbox" id="opt-same" data-opt="sameRoom" ${setup.sameRoom?'checked':''}><span>${tr('Playing in one room','Main di satu tempat')}<small>${tr("Everyone at the same table: table and comedy sounds only come from the host's phone so it doesn't echo. Your-turn sounds stay on each phone.",'Semua duduk bareng: suara meja dan suara komedi cuma keluar dari HP host biar gak gema. Suara giliran lu tetap di HP masing-masing.')}</small></span></label>`;
   return `<section class="setup">
     <div class="hero">
-      ${online?'<h2>Mabar dari HP <span>masing-masing</span>.</h2><p>Satu orang bikin room, yang lain gabung pakai kode 4 huruf. Kartu lu cuma kelihatan di HP lu, emote lawan nongol di layar semua orang.</p>'
-        :'<h2>Satu device, <span>gantian</span> pegang kartu.</h2><p>Tiap giliran kartu lu ketutup dulu. Oper laptop atau HP-nya, klik buka, buang, oper lagi. Yang duluan habis kartunya menang.</p>'}
+      ${online?tr('<h2>Play together, <span>each on your own phone</span>.</h2><p>One person creates a room, everyone else joins with a 4-letter code. Your cards only show on your phone; emotes show up on everyone\'s screen.</p>','<h2>Mabar dari HP <span>masing-masing</span>.</h2><p>Satu orang bikin room, yang lain gabung pakai kode 4 huruf. Kartu lu cuma kelihatan di HP lu, emote lawan nongol di layar semua orang.</p>')
+        :tr('<h2>One device, <span>take turns</span> holding the cards.</h2><p>Your cards stay hidden until it\'s your turn. Pass the laptop or phone, tap reveal, play, pass it on. First one out of cards wins.</p>','<h2>Satu device, <span>gantian</span> pegang kartu.</h2><p>Tiap giliran kartu lu ketutup dulu. Oper laptop atau HP-nya, klik buka, buang, oper lagi. Yang duluan habis kartunya menang.</p>')}
       <div class="showfan" aria-hidden="true">${fan}</div>
     </div>
     <div class="panel">
-      <div><label class="lbl">Cara main</label>
-        <div class="seg" role="group" aria-label="Cara main">${[['local','Satu device'],['online','Mabar online']].map(([k,l])=>`<button data-style="${k}" aria-pressed="${setup.style===k}">${l}</button>`).join('')}</div>
+      <div><label class="lbl">${tr('How to play','Cara main')}</label>
+        <div class="seg" role="group" aria-label="${tr('How to play','Cara main')}">${[['local',tr('One device','Satu device')],['online',tr('Online','Mabar online')]].map(([k,l])=>`<button data-style="${k}" aria-pressed="${setup.style===k}">${l}</button>`).join('')}</div>
       </div>
       ${online?onlineBlock:localBlock}
       ${optionsHTML()}
-      ${online?'':'<button class="btn primary" data-act="start" style="justify-self:start;padding:11px 26px">Kocok &amp; bagi kartu</button>'}
+      ${online?'':`<button class="btn primary" data-act="start" style="justify-self:start;padding:11px 26px">${tr('Shuffle &amp; deal','Kocok &amp; bagi kartu')}</button>`}
     </div>
   </section>`;
 }
@@ -1425,67 +1466,73 @@ function lobbyHTML(){
   const list=Object.entries(NET.players||{}).filter(([,p])=>p&&p.name).sort((a,b)=>(a[1].joined||0)-(b[1].joined||0));
   const host=NET.meta.host,me=NET.uid,o=NET.meta.opts||{};
   const link=location.href.split('#')[0]+'#'+NET.code;
-  const optsTxt=[o.mode==='mayhem'?'Mayhem':'Normal',o.timer?`Timer ${o.timer} dtk`:'Tanpa timer',o.triple?'Triple boleh':'Tanpa Triple',o.bombWin?'Bom langsung menang':'',o.bomb?'Bom makan 2':'',o.autoSkip?'Auto-skip':'',o.lastLoses!==false?'Main sampai satu kalah':'Yang habis duluan menang',o.sameRoom?'Suara dari HP host':''].filter(Boolean);
+  const optsTxt=[o.mode==='mayhem'?'Mayhem':'Normal',o.timer?tr(`${o.timer} s timer`,`Timer ${o.timer} dtk`):tr('No timer','Tanpa timer'),o.triple?tr('Triples allowed','Triple boleh'):tr('No Triples','Tanpa Triple'),o.bombWin?tr('Bomb wins instantly','Bom langsung menang'):'',o.bomb?tr('Bomb beats a 2','Bom makan 2'):'',o.autoSkip?'Auto-skip':'',o.lastLoses!==false?tr('Play until one loses','Main sampai satu kalah'):tr('First out wins','Yang habis duluan menang'),o.sameRoom?tr("Sound from the host's phone",'Suara dari HP host'):''].filter(Boolean);
   return `<section class="lobby">
     <div class="code-card">
-      <span class="lbl">Kode room</span>
-      <div class="code" aria-label="Kode room ${NET.code}">${NET.code.split('').map(ch=>`<span>${ch}</span>`).join('')}</div>
-      <p>Suruh temen lu buka game ini, pilih <b>Mabar online</b>, terus masukin kode di atas. Atau kirim link ini ke grup:</p>
-      <div class="linkrow"><code>${esc(link)}</code><button class="btn" data-act="copy-link">Salin link</button></div>
-      <p class="copied" id="copied" hidden>Link kesalin. Tinggal tempel di grup.</p>
+      <span class="lbl">${tr('Room code','Kode room')}</span>
+      <div class="code" aria-label="${tr('Room code','Kode room')} ${NET.code}">${NET.code.split('').map(ch=>`<span>${ch}</span>`).join('')}</div>
+      <p>${tr('Tell your friends to open this game, pick <b>Online</b>, and enter the code above. Or send this link to the group:','Suruh temen lu buka game ini, pilih <b>Mabar online</b>, terus masukin kode di atas. Atau kirim link ini ke grup:')}</p>
+      <div class="linkrow"><code>${esc(link)}</code><button class="btn" data-act="copy-link">${tr('Copy link','Salin link')}</button></div>
+      <p class="copied" id="copied" hidden>${tr('Link copied. Paste it in the group.','Link kesalin. Tinggal tempel di grup.')}</p>
     </div>
     <div class="panel">
-      <div><label class="lbl">Pemain ${list.length}/4</label>
-        <ul class="plist">${list.map(([u,p])=>`<li><i class="dot ${p.online===false?'off':''}" aria-hidden="true"></i><span>${esc(p.name)}</span>${u===host?'<span class="pill play">host</span>':''}${u===me?'<span class="pill pass">lu</span>':''}${p.online===false?'<span class="pill off">offline</span>':''}</li>`).join('')}</ul>
+      <div><label class="lbl">${tr('Players','Pemain')} ${list.length}/4</label>
+        <ul class="plist">${list.map(([u,p])=>`<li><i class="dot ${p.online===false?'off':''}" aria-hidden="true"></i><span>${esc(p.name)}</span>${u===host?'<span class="pill play">host</span>':''}${u===me?`<span class="pill pass">${tr('you','lu')}</span>`:''}${p.online===false?'<span class="pill off">offline</span>':''}</li>`).join('')}</ul>
       </div>
-      <div><label class="lbl">Aturan room</label><p class="opts">${optsTxt.join(' · ')}</p></div>
+      <div><label class="lbl">${tr('Room rules','Aturan room')}</label><p class="opts">${optsTxt.join(' · ')}</p></div>
       ${netNote?`<p class="netmsg" role="status">${esc(netNote)}</p>`:''}
-      <p class="hint">Room ini nyimpen catatan pertandingan selama setahun sejak terakhir dibuka. Pakai kode yang sama biar sistem tetap kenal kalian.</p>
-      ${NET.isHost?`<button class="btn primary" data-act="host-start" ${list.length<2?'disabled':''}>${list.length<2?'Nunggu minimal 2 pemain':`Mulai main (${list.length} orang)`}</button>`:'<p class="wait">Nunggu host mulai game…</p>'}
-      <button class="btn" data-act="leave-room">${NET.isHost?'Tutup room':'Keluar room'}</button>
+      <p class="hint">${tr('This room keeps its match records for a year after it was last opened. Use the same code so the system keeps recognizing you.','Room ini nyimpen catatan pertandingan selama setahun sejak terakhir dibuka. Pakai kode yang sama biar sistem tetap kenal kalian.')}</p>
+      ${NET.isHost?`<button class="btn primary" data-act="host-start" ${list.length<2?'disabled':''}>${list.length<2?tr('Waiting for at least 2 players','Nunggu minimal 2 pemain'):tr(`Start (${list.length} players)`,`Mulai main (${list.length} orang)`)}</button>`:`<p class="wait">${tr('Waiting for the host to start…','Nunggu host mulai game…')}</p>`}
+      <button class="btn" data-act="leave-room">${NET.isHost?tr('Close room','Tutup room'):tr('Leave room','Keluar room')}</button>
     </div>
   </section>`;
 }
 function seatsHTML(){
-  return `<section class="seats" aria-label="Pemain" style="--n:${G.n}">${G.players.map((p,i)=>{
+  return `<section class="seats" aria-label="${tr('Players','Pemain')}" style="--n:${G.n}">${G.players.map((p,i)=>{
     const now=i===G.turn&&G.phase!=='end',lm=lastMode();
     const isMe=isOnline()&&i===G.online.me;
     const off=isOnline()&&NET&&NET.players[G.uids[i]]&&NET.players[G.uids[i]].online===false;
-    const pill=off?'<span class="pill off">offline</span>':now?'<span class="pill turn">giliran</span>':p.done&&lm?(p.last==='Kalah'?'<span class="pill lost">kalah</span>':`<span class="pill done">juara ${p.done}</span>`):p.last==='Pass'?'<span class="pill pass">pass</span>':p.last?`<span class="pill play">${esc(p.last)}</span>`:'';
+    const pill=off?'<span class="pill off">offline</span>':now?`<span class="pill turn">${tr('turn','giliran')}</span>`:p.done&&lm?(p.last==='Kalah'?`<span class="pill lost">${tr('lost','kalah')}</span>`:`<span class="pill done">${tr('#','juara ')}${p.done}</span>`):p.last==='Pass'?'<span class="pill pass">pass</span>':p.last?`<span class="pill play">${esc(lastLabel(p.last))}</span>`:'';
     const canEmote=!isOnline()||isMe;
     return `<div class="seat ${now?'now':''} ${p.done&&lm&&G.phase!=='end'?'done':''}" id="seat-${i}">
       <div class="card back mini" aria-hidden="true"></div>
-      <div class="nm">${esc(p.name)}${isMe?' <small class="you">(lu)</small>':''}${pill}</div>
-      <div class="sc">${lm?`${p.score}<small>kalah</small>`:`${p.score>0?'+':''}${p.score}<small>poin</small>`}</div>
+      <div class="nm">${esc(p.name)}${isMe?` <small class="you">(${tr('you','lu')})</small>`:''}${pill}</div>
+      <div class="sc">${lm?`${p.score}<small>${tr(p.score===1?'loss':'losses','kalah')}</small>`:`${p.score>0?'+':''}${p.score}<small>${tr('pts','poin')}</small>`}</div>
       ${canEmote?`<button class="emo-btn" data-emote-open="${i}" aria-expanded="${picker===i}" aria-label="Emote ${esc(p.name)}" title="Emote">${mascotSVG('laugh').replace('m-laugh','m-icon')}</button>`:'<span></span>'}
-      <div class="ct">${p.hand.length}<small> kartu</small></div>
+      <div class="ct">${p.hand.length}<small> ${tr(p.hand.length===1?'card':'cards','kartu')}</small></div>
     </div>`}).join('')}</section>${pickerHTML()}`;
+}
+/* what a seat last did, as shown: combo names, 'Juara N', 'Kalah' are stored ids */
+function lastLabel(v){
+  if(v==='Kalah')return tr('Lost','Kalah');
+  const m=/^Juara (\d+)$/.exec(v);if(m)return tr(`#${m[1]}`,v);
+  return cname(v);
 }
 function pickerHTML(){
   if(picker==null||!G.players[picker]) return '';
-  return `<div class="picker" role="group" aria-label="Pilih emote"><span class="who">Emote <b>${esc(G.players[picker].name)}</b></span>
-    ${Object.entries(EMOTES).map(([k,v])=>`<button class="emo-opt" data-emote="${k}">${mascotSVG(k).replace('m-'+k,'m-icon')}${v.label}</button>`).join('')}
-    <button class="btn close" data-act="close-picker">Tutup</button></div>`;
+  return `<div class="picker" role="group" aria-label="${tr('Pick an emote','Pilih emote')}"><span class="who">Emote <b>${esc(G.players[picker].name)}</b></span>
+    ${Object.entries(EMOTES).map(([k,v])=>`<button class="emo-opt" data-emote="${k}">${mascotSVG(k).replace('m-'+k,'m-icon')}${esc(pick(v.label))}</button>`).join('')}
+    <button class="btn close" data-act="close-picker">${tr('Close','Tutup')}</button></div>`;
 }
 function boardHTML(){
   const t=G.table;let inner;
   if(t){
-    inner=`<div class="who">${esc(G.players[t.by].name)} buang <em>${t.combo.name}</em></div><div class="played">${t.cards.map(c=>cardHTML(c)).join('')}</div>`;
+    inner=`<div class="who">${tr(`${esc(G.players[t.by].name)} played <em>${cname(t.combo.name)}</em>`,`${esc(G.players[t.by].name)} buang <em>${t.combo.name}</em>`)}</div><div class="played">${t.cards.map(c=>cardHTML(c)).join('')}</div>`;
   }else if(G.phase==='end'){
     const lz=lastMode()&&G.result?G.result.findIndex(r=>r&&r.lost):-1;
-    inner=lz>=0?`<div class="who"><em>${esc(G.players[lz].name)}</em> kalah</div><div class="sub">Ronde ${G.round} selesai. ${esc(G.players[G.lastWinner].name)} habis duluan.</div>`
-      :`<div class="who"><em>${esc(G.players[G.lastWinner].name)}</em> habis duluan!</div><div class="sub">Ronde ${G.round} selesai.</div>`;
+    inner=lz>=0?`<div class="who">${tr(`<em>${esc(G.players[lz].name)}</em> loses`,`<em>${esc(G.players[lz].name)}</em> kalah`)}</div><div class="sub">${tr(`Round ${G.round} over. ${esc(G.players[G.lastWinner].name)} went out first.`,`Ronde ${G.round} selesai. ${esc(G.players[G.lastWinner].name)} habis duluan.`)}</div>`
+      :`<div class="who">${tr(`<em>${esc(G.players[G.lastWinner].name)}</em> went out first!`,`<em>${esc(G.players[G.lastWinner].name)}</em> habis duluan!`)}</div><div class="sub">${tr(`Round ${G.round} over.`,`Ronde ${G.round} selesai.`)}</div>`;
   }else{
-    inner=`<div class="who">Meja kosong</div><div class="sub">${esc(G.players[G.turn].name)} bebas buka pakai kombinasi apa aja${G.must!=null?`, asal ada <b>${label(G.must)}</b>`:''}.</div>`;
+    inner=`<div class="who">${tr('Empty table','Meja kosong')}</div><div class="sub">${tr(`${esc(G.players[G.turn].name)} can lead any combo${G.must!=null?` that includes the <b>${label(G.must)}</b>`:''}.`,`${esc(G.players[G.turn].name)} bebas buka pakai kombinasi apa aja${G.must!=null?`, asal ada <b>${label(G.must)}</b>`:''}.`)}</div>`;
   }
   const hostOff=isOnline()&&!G.online.isHost&&NET&&NET.meta&&NET.players[NET.meta.host]&&NET.players[NET.meta.host].online===false;
-  return `${hostOff?'<p class="notice" role="status">Host lagi offline. Game lanjut lagi pas host balik.</p>':''}
-    <div class="board-wrap"><section class="board" aria-label="Meja">${inner}</section>
-    <aside class="log"><h4>Riwayat</h4><ol>${G.log.map(l=>`<li>${esc(l)}</li>`).join('')}</ol></aside></div>
-    ${G.log[0]?`<p class="lastlog">${esc(G.log[0])}</p>`:''}`;
+  return `${hostOff?`<p class="notice" role="status">${tr("The host is offline. The game continues when they're back.",'Host lagi offline. Game lanjut lagi pas host balik.')}</p>`:''}
+    <div class="board-wrap"><section class="board" aria-label="${tr('Table','Meja')}">${inner}</section>
+    <aside class="log"><h4>${tr('History','Riwayat')}</h4><ol>${G.log.map(l=>`<li>${esc(pick(l))}</li>`).join('')}</ol></aside></div>
+    ${G.log[0]?`<p class="lastlog">${esc(pick(G.log[0]))}</p>`:''}`;
 }
 function sortSeg(){
-  return `<div class="seg" role="group" aria-label="Urutkan"><button data-sort="rank" aria-pressed="${G.sortMode==='rank'}">Urut angka</button><button data-sort="suit" aria-pressed="${G.sortMode==='suit'}">Urut bunga</button></div>`;
+  return `<div class="seg" role="group" aria-label="${tr('Sort','Urutkan')}"><button data-sort="rank" aria-pressed="${G.sortMode==='rank'}">${tr('By rank','Urut angka')}</button><button data-sort="suit" aria-pressed="${G.sortMode==='suit'}">${tr('By suit','Urut bunga')}</button></div>`;
 }
 function zoneHTML(){
   const me=G.online?G.online.me:G.turn, p=G.players[me];
@@ -1493,44 +1540,44 @@ function zoneHTML(){
     const t=G.table;
     return `<section class="zone"><div class="handoff">
       <div class="fan">${backHTML()+backHTML()+backHTML()}</div>
-      <h2>Oper ke <em>${esc(p.name)}</em></h2>
-      <p>${t?`Di meja: ${esc(G.players[t.by].name)}, ${t.combo.name}. Yang lain jangan ngintip ya.`:'Meja kosong, lu yang buka. Yang lain jangan ngintip ya.'}${G.opts.timer?` Timer ${G.opts.timer} detik jalan pas kartu dibuka.`:''}</p>
-      <button class="btn primary" data-act="reveal">Buka kartu ${esc(p.name)}</button>
+      <h2>${tr('Pass to','Oper ke')} <em>${esc(p.name)}</em></h2>
+      <p>${t?tr(`On the table: ${esc(G.players[t.by].name)}, ${cname(t.combo.name)}. No peeking, everyone else.`,`Di meja: ${esc(G.players[t.by].name)}, ${t.combo.name}. Yang lain jangan ngintip ya.`):tr("Empty table, you lead. No peeking, everyone else.",'Meja kosong, lu yang buka. Yang lain jangan ngintip ya.')}${G.opts.timer?tr(` The ${G.opts.timer}-second timer starts when the cards are revealed.`,` Timer ${G.opts.timer} detik jalan pas kartu dibuka.`):''}</p>
+      <button class="btn primary" data-act="reveal">${tr(`Reveal ${esc(p.name)}'s cards`,`Buka kartu ${esc(p.name)}`)}</button>
     </div></section>`;
   }
   if(G.phase==='end'&&lastMode()&&G.result){
     const order=G.players.map((q,i)=>({q,i,r:G.result[i]||{}})).sort((a,b)=>(a.r.place||9)-(b.r.place||9));
-    const rows=order.map(({q,i,r})=>`<tr class="${r.lost?'lost-row':''}"><td class="num">${r.lost?'<span class="pill lost">kalah</span>':`#${r.place||'-'}`}</td>
-        <td><b>${esc(q.name)}</b>${isOnline()&&i===G.online.me?' <small class="you">(lu)</small>':''}</td>
-        <td><div class="left">${r.lost?sortHand(r.hand&&r.hand.length?r.hand:q.hand.filter(c=>c>=0),'rank').map(c=>cardHTML(c)).join(''):'<span style="color:var(--muted)">habis</span>'}</div></td>
+    const rows=order.map(({q,i,r})=>`<tr class="${r.lost?'lost-row':''}"><td class="num">${r.lost?`<span class="pill lost">${tr('lost','kalah')}</span>`:`#${r.place||'-'}`}</td>
+        <td><b>${esc(q.name)}</b>${isOnline()&&i===G.online.me?` <small class="you">(${tr('you','lu')})</small>`:''}</td>
+        <td><div class="left">${r.lost?sortHand(r.hand&&r.hand.length?r.hand:q.hand.filter(c=>c>=0),'rank').map(c=>cardHTML(c)).join(''):`<span style="color:var(--muted)">${tr('out','habis')}</span>`}</div></td>
         <td class="num"><b>${q.score}</b></td></tr>`).join('');
     const canNext=!isOnline()||G.online.isHost,L=order[order.length-1];
-    return `<section class="zone"><div class="zone-head"><h2>Hasil ronde ${G.round}<small>${esc(L.q.name)} kalah${L.r.c?`, sisa ${L.r.c} kartu`:''} · ${esc(G.players[G.lastWinner].name)} habis duluan${G.winHow==='bomb'?' pakai bom 💣':''}</small></h2></div>
-      <div class="tbl"><table class="result"><thead><tr><th>Urutan</th><th>Pemain</th><th>Sisa kartu</th><th style="text-align:right">Total kalah</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="controls">${canNext?'<button class="btn primary" data-act="next">Ronde berikutnya</button>':'<span class="wait">Nunggu host mulai ronde berikutnya…</span>'}
-        ${isOnline()?`<button class="btn" data-act="leave-room">${G.online.isHost?'Tutup room':'Keluar room'}</button>`:'<button class="btn" data-act="setup">Ganti pemain</button>'}</div>
+    return `<section class="zone"><div class="zone-head"><h2>${tr('Round','Hasil ronde')} ${G.round}${tr(' results','')}<small>${tr(`${esc(L.q.name)} loses${L.r.c?` with ${L.r.c} card${L.r.c>1?'s':''} left`:''} · ${esc(G.players[G.lastWinner].name)} went out first${G.winHow==='bomb'?' with a bomb 💣':''}`,`${esc(L.q.name)} kalah${L.r.c?`, sisa ${L.r.c} kartu`:''} · ${esc(G.players[G.lastWinner].name)} habis duluan${G.winHow==='bomb'?' pakai bom 💣':''}`)}</small></h2></div>
+      <div class="tbl"><table class="result"><thead><tr><th>${tr('Place','Urutan')}</th><th>${tr('Player','Pemain')}</th><th>${tr('Cards left','Sisa kartu')}</th><th style="text-align:right">${tr('Total losses','Total kalah')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="controls">${canNext?`<button class="btn primary" data-act="next">${tr('Next round','Ronde berikutnya')}</button>`:`<span class="wait">${tr('Waiting for the host to start the next round…','Nunggu host mulai ronde berikutnya…')}</span>`}
+        ${isOnline()?`<button class="btn" data-act="leave-room">${G.online.isHost?tr('Close room','Tutup room'):tr('Leave room','Keluar room')}</button>`:`<button class="btn" data-act="setup">${tr('Change players','Ganti pemain')}</button>`}</div>
     </section>`;
   }
   if(G.phase==='end'){
     const rows=G.players.map((q,i)=>{const r=(G.result&&G.result[i])||{},rem=(r.hand&&r.hand.length?r.hand:q.hand.filter(c=>c>=0));
-      return `<tr><td><b>${esc(q.name)}</b>${i===G.lastWinner?' <span class="pill play">menang</span>':''}</td>
-        <td><div class="left">${i===G.lastWinner?'<span style="color:var(--muted)">habis</span>':sortHand(rem,'rank').map(c=>cardHTML(c)).join('')}</div></td>
+      return `<tr><td><b>${esc(q.name)}</b>${i===G.lastWinner?` <span class="pill play">${tr('won','menang')}</span>`:''}</td>
+        <td><div class="left">${i===G.lastWinner?`<span style="color:var(--muted)">${tr('out','habis')}</span>`:sortHand(rem,'rank').map(c=>cardHTML(c)).join('')}</div></td>
         <td class="num">${i===G.lastWinner?`+${r.gain||0}`:`−${r.pen||0}${r.m>1?` <small style="color:var(--muted)">(${r.c}×${r.m})</small>`:''}`}</td>
         <td class="num"><b>${q.score>0?'+':''}${q.score}</b></td></tr>`}).join('');
     const canNext=!isOnline()||G.online.isHost;
-    return `<section class="zone"><div class="zone-head"><h2>Hasil ronde ${G.round}<small>${esc(G.players[G.lastWinner].name)} menang ${G.winHow==='bomb'?'pakai bom 💣':'karena kartunya habis'}</small></h2></div>
-      <div class="tbl"><table class="result"><thead><tr><th>Pemain</th><th>Sisa kartu</th><th style="text-align:right">Ronde ini</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="controls">${canNext?'<button class="btn primary" data-act="next">Ronde berikutnya</button>':'<span class="wait">Nunggu host mulai ronde berikutnya…</span>'}
-        ${isOnline()?`<button class="btn" data-act="leave-room">${G.online.isHost?'Tutup room':'Keluar room'}</button>`:'<button class="btn" data-act="setup">Ganti pemain</button>'}</div>
+    return `<section class="zone"><div class="zone-head"><h2>${tr('Round','Hasil ronde')} ${G.round}${tr(' results','')}<small>${tr(`${esc(G.players[G.lastWinner].name)} wins ${G.winHow==='bomb'?'with a bomb 💣':'by running out of cards'}`,`${esc(G.players[G.lastWinner].name)} menang ${G.winHow==='bomb'?'pakai bom 💣':'karena kartunya habis'}`)}</small></h2></div>
+      <div class="tbl"><table class="result"><thead><tr><th>${tr('Player','Pemain')}</th><th>${tr('Cards left','Sisa kartu')}</th><th style="text-align:right">${tr('This round','Ronde ini')}</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="controls">${canNext?`<button class="btn primary" data-act="next">${tr('Next round','Ronde berikutnya')}</button>`:`<span class="wait">${tr('Waiting for the host to start the next round…','Nunggu host mulai ronde berikutnya…')}</span>`}
+        ${isOnline()?`<button class="btn" data-act="leave-room">${G.online.isHost?tr('Close room','Tutup room'):tr('Leave room','Keluar room')}</button>`:`<button class="btn" data-act="setup">${tr('Change players','Ganti pemain')}</button>`}</div>
     </section>`;
   }
   if(!myTurn()){
     const t=G.players[G.turn];
-    return `<section class="zone" aria-label="Kartu lu">
-      <div class="zone-head"><h2>Kartu lu<small>${p.hand.length} kartu</small></h2>${sortSeg()}</div>
+    return `<section class="zone" aria-label="${tr('Your cards','Kartu lu')}">
+      <div class="zone-head"><h2>${tr('Your cards','Kartu lu')}<small>${p.hand.length} ${tr(p.hand.length===1?'card':'cards','kartu')}</small></h2>${sortSeg()}</div>
       ${timerHTML()}
       <div class="hand">${sortHand(p.hand,G.sortMode).map(c=>cardHTML(c,{must:c===G.must})).join('')}</div>
-      <div class="status" role="status">${p.done&&lastMode()?`Lu udah habis, juara ${p.done}. Tonton yang lain ya. Giliran <b>${esc(t.name)}</b>.`:`Giliran <b>${esc(t.name)}</b>. Tunggu bentar ya…`}</div>
+      <div class="status" role="status">${p.done&&lastMode()?tr(`You're out, #${p.done}. Enjoy the show. <b>${esc(t.name)}</b>'s turn.`,`Lu udah habis, juara ${p.done}. Tonton yang lain ya. Giliran <b>${esc(t.name)}</b>.`):tr(`<b>${esc(t.name)}</b>'s turn. Hang on…`,`Giliran <b>${esc(t.name)}</b>. Tunggu bentar ya…`)}</div>
     </section>`;
   }
   const r=check(), pending=G.pending&&Date.now()-G.pending<4000;
@@ -1538,18 +1585,18 @@ function zoneHTML(){
   G.plays=findPlays(p.hand,G.table,G.must,G.opts);
   const quick=G.plays.length
     ?G.plays.map((g,i)=>{const on=G.hint&&G.hint.name===g.name;
-      return `<button class="chip ${g.list[0].combo.size===5?'five':''}" data-quick="${i}" aria-pressed="${!!on}">${g.name}<small>${on?`${G.hint.idx+1}/${g.list.length}`:g.list.length}</small></button>`}).join('')
-    :'<span class="none">Gak ada kombinasi yang bisa makan meja. Pass aja.</span>';
-  return `<section class="zone ${isOnline()?'my-turn':''}" aria-label="Kartu ${esc(p.name)}">
-    <div class="zone-head"><h2>${isOnline()?'Giliran lu!':`Kartu ${esc(p.name)}`}<small>${p.hand.length} kartu</small></h2>${sortSeg()}</div>
+      return `<button class="chip ${g.list[0].combo.size===5?'five':''}" data-quick="${i}" aria-pressed="${!!on}">${cname(g.name)}<small>${on?`${G.hint.idx+1}/${g.list.length}`:g.list.length}</small></button>`}).join('')
+    :`<span class="none">${tr('Nothing in your hand beats the table. Pass.','Gak ada kombinasi yang bisa makan meja. Pass aja.')}</span>`;
+  return `<section class="zone ${isOnline()?'my-turn':''}" aria-label="${tr(`${esc(p.name)}'s cards`,`Kartu ${esc(p.name)}`)}">
+    <div class="zone-head"><h2>${isOnline()?tr('Your turn!','Giliran lu!'):tr(`${esc(p.name)}'s cards`,`Kartu ${esc(p.name)}`)}<small>${p.hand.length} ${tr(p.hand.length===1?'card':'cards','kartu')}</small></h2>${sortSeg()}</div>
     ${timerHTML()}
     <div class="hand">${hand}</div>
-    <div class="quick" role="group" aria-label="Cepat pilih kombinasi"><span class="lbl">Cepat pilih</span>${quick}</div>
-    <div class="status ${pending?'':r.ok?'ok':r.bad?'bad':''}" role="status">${pending?'Ngirim ke meja…':esc(r.msg)}</div>
+    <div class="quick" role="group" aria-label="${tr('Quick pick a combo','Cepat pilih kombinasi')}"><span class="lbl">${tr('Quick pick','Cepat pilih')}</span>${quick}</div>
+    <div class="status ${pending?'':r.ok?'ok':r.bad?'bad':''}" role="status">${pending?tr('Sending to the table…','Ngirim ke meja…'):esc(r.msg)}</div>
     <div class="controls">
       <button class="btn" data-act="pass" ${G.table&&!pending?'':'disabled'}>Pass</button>
-      <button class="btn" data-act="clear" ${G.sel.size&&!pending?'':'disabled'}>Batal pilih</button>
-      <button class="btn primary" data-act="play" ${r.ok&&!pending?'':'disabled'}>Buang</button>
+      <button class="btn" data-act="clear" ${G.sel.size&&!pending?'':'disabled'}>${tr('Clear','Batal pilih')}</button>
+      <button class="btn primary" data-act="play" ${r.ok&&!pending?'':'disabled'}>${tr('Play','Buang')}</button>
     </div>
   </section>`;
 }
@@ -1559,7 +1606,7 @@ function render(){
   let body;
   if(G&&G.phase&&G.phase!=='setup')body=seatsHTML()+boardHTML()+zoneHTML();
   else if(NET&&NET.meta&&NET.meta.status==='lobby')body=lobbyHTML();
-  else if(NET)body=`<section class="panel connecting"><p>Lagi nyambung ke room ${esc(NET.code)}…</p><button class="btn" data-act="leave-room">Keluar</button></section>`;
+  else if(NET)body=`<section class="panel connecting"><p>${tr(`Connecting to room ${esc(NET.code)}…`,`Lagi nyambung ke room ${esc(NET.code)}…`)}</p><button class="btn" data-act="leave-room">${tr('Leave','Keluar')}</button></section>`;
   else body=setupHTML();
   app.innerHTML=headerHTML()+body;
   publish();
@@ -1580,6 +1627,7 @@ app.addEventListener('click',e=>{
   if(b.dataset.emoteOpen!=null){const i=+b.dataset.emoteOpen;picker=picker===i?null:i;return render()}
   if(b.dataset.emote){const i=picker;picker=null;render();return sendEmote(i,b.dataset.emote)}
   if(act==='close-picker'){picker=null;return render()}
+  if(act==='lang'){I18N.set(I18N.lang()==='id'?'en':'id');return}
   if(act==='sound'){setSoundMode(SOUND_MODES[(SOUND_MODES.indexOf(soundMode)+1)%SOUND_MODES.length]);return render()}
   if(b.dataset.soundSet){setSoundMode(b.dataset.soundSet);return render()}
   if(b.dataset.rxTest){if(window.CapsaReactions)window.CapsaReactions.test(b.dataset.rxTest);return}
@@ -1629,6 +1677,7 @@ document.addEventListener('keydown',e=>{
   if(!G||e.target.tagName==='INPUT')return;
   if(G.phase==='turn'&&e.key==='Enter'&&myTurn()&&check().ok){e.preventDefault();uiPlay()}
 });
+document.addEventListener('capsa:lang',()=>render());
 render();
 if(savedRoom()&&setup.style==='online'&&!hashCode){/* offer resume via button; nothing automatic */}
 else if(hashCode&&savedRoom()===hashCode){joinRoom(hashCode)}

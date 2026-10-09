@@ -6,7 +6,7 @@ function el(){return {className:'',innerHTML:'',isConnected:true,setAttribute(){
 global.document={createElement:()=>el(),head:{appendChild(){}},body:{appendChild(){}}};
 global.window=global;global.requestAnimationFrame=f=>setTimeout(f,0);global.matchMedia=()=>({matches:true});global.innerWidth=400;global.innerHeight=800;
 global.CapsaFX={mascotSVG:e=>'',soundOn:()=>false,audio:()=>null,boardCenter:()=>[0,0]};
-for(const f of ['reactions.config.js','events.js','stats.js','reactions.js'])eval(fs.readFileSync(path+f,'utf8'));
+for(const f of ['i18n.js','reactions.config.js','events.js','stats.js','reactions.js'])eval(fs.readFileSync(path+f,'utf8'));
 Object.assign(CapsaReactions.settings,{batchWindowMs:20,displayMs:30,gapMs:5});
 const seen=[];CapsaEvents.on('*',e=>seen.push(e.type+':'+e.name));
 const N=['Ana','Budi','Cici','Dodi'];

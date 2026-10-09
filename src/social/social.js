@@ -30,13 +30,17 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
   const ID_RE = /^[a-z0-9-]{1,24}$/;
+  // catalog texts are { en, id } pairs (or plain strings); resolve them when they are shown, in this phone's language
+  const I18N = window.CapsaI18n;
+  const say = (v) => { const s = I18N ? I18N.pick(v) : v; return s == null ? '' : String(s); };
+  const isText = (v) => typeof v === 'string' || !!(I18N && I18N.isPair(v));
   const PLAY_PHASES = ['turn', 'handoff', 'end'];
 
   /* ================= catalog ================= */
   const IDX = {};
   function addQuick(list) {
     (list || []).forEach((q) => {
-      if (!q || !ID_RE.test(q.id) || typeof q.text !== 'string') return;
+      if (!q || !ID_RE.test(q.id) || !isText(q.text)) return;
       IDX['qc.' + q.id] = { key: 'qc.' + q.id, kind: 'quick', tone: q.cat || 'reaction', def: q, voice: C.VOICE[q.voice] ? q.voice : null };
     });
   }
@@ -180,8 +184,10 @@
     const E = EV(); if (!E) return;
     const def = get(entry.id).def;
     // the comedy memory hears quick chat as chat, emotes as emotes: callbacks like "EZ … then lost" keep working
+    // text is in THIS phone's language (each phone builds its own fact); texts carries both, for text built once for all
     if (entry.kind === 'quick') {
-      E.ingest('chat', { seat: entry.seat, name: entry.name, text: (entry.toName ? '@' + entry.toName + ' ' : '') + def.text, target: entry.to,
+      const line = () => (entry.toName ? '@' + entry.toName + ' ' : '') + say(def.text);
+      E.ingest('chat', { seat: entry.seat, name: entry.name, text: line(), texts: I18N ? I18N.both(line) : undefined, target: entry.to,
         counts: (v.counts || []).slice(), trash: !!def.trash, prediction: !!def.prediction, confession: !!def.confession, qc: entry.id });
     } else {
       E.ingest('emote', { seat: entry.seat, name: entry.name, e: def.id, tone: entry.tone, taunt: entry.tone === 'taunt', target: entry.to });
@@ -247,7 +253,8 @@
     if (vbus.until > now) { vnote('busy ' + vid); return false; }
     vbus = { until: now + CFG.voice.maxMs, seat, nodes: [] };
     const mine = vbus;
-    load(V.file, o.ctx).then((buf) => {
+    const file = say(V.file);                          // a recording can be per language: file { en, id }
+    load(file, o.ctx).then((buf) => {
       if (vbus !== mine) return;                      // stopped (mute, disconnect) while loading
       if (buf) { playBuffer(o, buf, mine); vnote('file ' + vid); }
       else if (CFG.voice.placeholder) { babble(o, V, vid, mine); vnote('placeholder ' + vid); }
@@ -268,7 +275,7 @@
   function babble(o, V, vid, mine) {
     const A = C.ARCHETYPES[V.archetype] || C.ARCHETYPES.stoic, ctx = o.ctx;
     let seed = hash(vid); const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-    const n = Math.max(2, Math.min(7, Math.round(String(V.line || '').length / 3)));
+    const n = Math.max(2, Math.min(7, Math.round(say(V.line || '').length / 3)));
     const out = outGain(o, mine); out.gain.value = 0.32 * settings.volume;
     const t0 = ctx.currentTime + 0.02, F = [700, 1000, 1300, 1900, 2400];
     for (let i = 0; i < n; i++) {
@@ -309,11 +316,11 @@
     const from = esc(entry.name) + (entry.toName ? ' → ' + esc(entry.toName) : '');
     if (d.kind === 'emote') {
       el.className = 'emote-pop soc-pop' + (entry.repeat ? ' soc-repeat' : '');
-      el.innerHTML = `${fx.mascotSVG(d.def.id)}<div class="say">${esc(d.def.say || d.def.label)}</div><div class="from">${from}</div>`;
+      el.innerHTML = `${fx.mascotSVG(d.def.id)}<div class="say">${esc(say(d.def.say || d.def.label))}</div><div class="from">${from}</div>`;
     } else {
       el.className = 'soc-bubble soc-' + d.tone + (entry.repeat ? ' soc-repeat' : '');
       el.innerHTML = `<span class="soc-from">${from}</span><span class="soc-text"></span>`;
-      el.querySelector('.soc-text').textContent = d.def.text;
+      el.querySelector('.soc-text').textContent = say(d.def.text);
     }
     document.body.appendChild(el);
     place(el, entry.seat);
@@ -343,7 +350,8 @@
 
   /* ================= panel ================= */
   let open = false, tab = 'fav', speaker = null, target = null, panelEl = null, msgT = 0, coolT = 0, swallowUntil = 0;
-  const TABS = [{ id: 'fav', label: '★' }, { id: 'emote', label: 'Emote' }].concat(C.CATEGORIES.map((c) => ({ id: c.id, label: c.label })));
+  const tabs = () => [{ id: 'fav', label: '★', aria: tr('Favorites', 'Favorit') }, { id: 'emote', label: tr('Emotes', 'Emote') }]
+    .concat(C.CATEGORIES.map((c) => ({ id: c.id, label: say(c.label) })));
   function favorites() {
     const top = (prefix, list, defaults, k) => {
       const ranked = list.map((x) => prefix + x.id).filter((id) => usage[id] >= 2).sort((a, b) => usage[b] - usage[a]);
@@ -354,36 +362,36 @@
   }
   function emoBtn(id) {
     const d = get(id), fx = FX();
-    return `<button type="button" class="soc-emo" data-social="${id}" aria-label="Emote ${esc(d.def.label)}">${fx.mascotSVG(d.def.id).replace('m-' + d.def.id, 'm-icon')}<span>${esc(d.def.label)}${d.voice ? ' <i aria-hidden="true">🔊</i>' : ''}</span></button>`;
+    return `<button type="button" class="soc-emo" data-social="${id}" aria-label="${esc(tr('Emote: ', 'Emote ') + say(d.def.label))}">${fx.mascotSVG(d.def.id).replace('m-' + d.def.id, 'm-icon')}<span>${esc(say(d.def.label))}${d.voice ? ' <i aria-hidden="true">🔊</i>' : ''}</span></button>`;
   }
   function qcBtn(id) {
     const d = get(id);
-    return `<button type="button" class="chip soc-qc soc-${d.tone}" data-social="${id}">${esc(d.def.text)}${d.voice ? ' <i aria-hidden="true">🔊</i>' : ''}</button>`;
+    return `<button type="button" class="chip soc-qc soc-${d.tone}" data-social="${id}">${esc(say(d.def.text))}${d.voice ? ' <i aria-hidden="true">🔊</i>' : ''}</button>`;
   }
   function bodyHTML(v) {
     if (tab === 'fav') { const f = favorites(); return `<div class="soc-grid">${f.emotes.map(emoBtn).join('')}</div><div class="soc-chips">${f.quick.map(qcBtn).join('')}</div>`; }
     if (tab === 'emote') {
       const packs = [...new Set(C.EMOTES.map((e) => e.pack || 'Dasar'))];
-      return packs.map((p) => `${packs.length > 1 ? `<div class="soc-lbl">${esc(p)}</div>` : ''}<div class="soc-grid">${C.EMOTES.filter((e) => (e.pack || 'Dasar') === p && get('emo.' + e.id)).map((e) => emoBtn('emo.' + e.id)).join('')}</div>`).join('');
+      return packs.map((p) => `${packs.length > 1 ? `<div class="soc-lbl">${esc(say((C.PACKS || {})[p] || p))}</div>` : ''}<div class="soc-grid">${C.EMOTES.filter((e) => (e.pack || 'Dasar') === p && get('emo.' + e.id)).map((e) => emoBtn('emo.' + e.id)).join('')}</div>`).join('');
     }
     if (tab === 'set') {
       const me = v.online ? v.me : null, fx = FX();
       const others = v.names.map((n, i) => (i === me ? '' : `<button type="button" class="chip" data-soc-mute="${i}" aria-pressed="${isMuted(i)}">${isMuted(i) ? '🔇 ' : ''}${esc(n)}</button>`)).join('');
-      return `<label class="soc-set"><input type="checkbox" data-soc-set="voice"${settings.voice ? ' checked' : ''}> Voice line</label>
-        <label class="soc-set soc-vol">Volume voice <input type="range" min="0" max="100" step="5" value="${Math.round(settings.volume * 100)}" data-soc-set="volume" aria-label="Volume voice line"></label>
-        <label class="soc-set"><input type="checkbox" data-soc-set="showOthers"${settings.showOthers ? ' checked' : ''}> Tampilkan emote &amp; quick chat orang lain</label>
-        <div class="soc-lbl">Bisukan pemain (cuma di HP lu)</div><div class="soc-chips">${others}</div>
-        <p class="soc-note">${fx.soundOn && fx.soundOn() ? 'Suara game: atur di pilihan Suara.' : 'Suara game lagi Mati, voice line ikut diam. Emote &amp; chat tetap jalan.'}</p>`;
+      return `<label class="soc-set"><input type="checkbox" data-soc-set="voice"${settings.voice ? ' checked' : ''}> ${tr('Voice lines', 'Voice line')}</label>
+        <label class="soc-set soc-vol">${tr('Voice volume', 'Volume voice')} <input type="range" min="0" max="100" step="5" value="${Math.round(settings.volume * 100)}" data-soc-set="volume" aria-label="${tr('Voice line volume', 'Volume voice line')}"></label>
+        <label class="soc-set"><input type="checkbox" data-soc-set="showOthers"${settings.showOthers ? ' checked' : ''}> ${tr('Show other players\' emotes &amp; quick chat', 'Tampilkan emote &amp; quick chat orang lain')}</label>
+        <div class="soc-lbl">${tr('Mute players (only on your phone)', 'Bisukan pemain (cuma di HP lu)')}</div><div class="soc-chips">${others}</div>
+        <p class="soc-note">${fx.soundOn && fx.soundOn() ? tr('Game sound: change it in the Sound options.', 'Suara game: atur di pilihan Suara.') : tr('Game sound is off, so voice lines stay quiet too. Emotes &amp; chat still work.', 'Suara game lagi Mati, voice line ikut diam. Emote &amp; chat tetap jalan.')}</p>`;
     }
     return `<div class="soc-chips">${C.QUICK.filter((q) => q.cat === tab).map((q) => qcBtn('qc.' + q.id)).join('')}</div>`;
   }
   function panelHTML(v) {
     const n = v.names.length, me = v.online ? v.me : speaker;
-    const who = v.online ? '' : `<div class="soc-row"><span class="soc-lbl">Sebagai</span>${v.names.map((nm, i) => `<button type="button" class="chip" data-soc-who="${i}" aria-pressed="${i === speaker}">${esc(nm)}</button>`).join('')}</div>`;
-    const to = n > 2 && tab !== 'set' ? `<div class="soc-row"><span class="soc-lbl">Ke</span><button type="button" class="chip" data-soc-to="" aria-pressed="${target == null}">Semua</button>${v.names.map((nm, i) => (i === me ? '' : `<button type="button" class="chip" data-soc-to="${i}" aria-pressed="${i === target}">@${esc(nm)}</button>`)).join('')}</div>` : '';
-    return `<div class="soc-head"><div class="soc-tabs" role="tablist">${TABS.map((t) => `<button type="button" role="tab" class="soc-tab" data-soc-tab="${t.id}" aria-selected="${t.id === tab}"${t.aria ? ` aria-label="${t.aria}"` : ''}>${t.label}</button>`).join('')}</div>
-      <button type="button" class="soc-x" data-soc-tab="set" aria-label="Pengaturan" aria-pressed="${tab === 'set'}">⚙</button>
-      <button type="button" class="soc-x" data-soc-close aria-label="Tutup">✕</button></div>${who}${to}
+    const who = v.online ? '' : `<div class="soc-row"><span class="soc-lbl">${tr('As', 'Sebagai')}</span>${v.names.map((nm, i) => `<button type="button" class="chip" data-soc-who="${i}" aria-pressed="${i === speaker}">${esc(nm)}</button>`).join('')}</div>`;
+    const to = n > 2 && tab !== 'set' ? `<div class="soc-row"><span class="soc-lbl">${tr('To', 'Ke')}</span><button type="button" class="chip" data-soc-to="" aria-pressed="${target == null}">${tr('Everyone', 'Semua')}</button>${v.names.map((nm, i) => (i === me ? '' : `<button type="button" class="chip" data-soc-to="${i}" aria-pressed="${i === target}">@${esc(nm)}</button>`)).join('')}</div>` : '';
+    return `<div class="soc-head"><div class="soc-tabs" role="tablist">${tabs().map((t) => `<button type="button" role="tab" class="soc-tab" data-soc-tab="${t.id}" aria-selected="${t.id === tab}"${t.aria ? ` aria-label="${esc(t.aria)}"` : ''}>${esc(t.label)}</button>`).join('')}</div>
+      <button type="button" class="soc-x" data-soc-tab="set" aria-label="${tr('Settings', 'Pengaturan')}" aria-pressed="${tab === 'set'}">⚙</button>
+      <button type="button" class="soc-x" data-soc-close aria-label="${tr('Close', 'Tutup')}">✕</button></div>${who}${to}
       <div class="soc-body">${bodyHTML(v)}</div><div class="soc-msg" role="status" aria-live="polite"></div>`;
   }
   function openPanel(seat) {
@@ -397,7 +405,8 @@
     if (typeof document === 'undefined' || !document.body || typeof document.getElementById !== 'function') return;
     const v = view();
     if (!open || !canSocial(v)) { open = false; if (panelEl) panelEl.remove(); panelEl = null; syncOpeners(); return; }
-    if (!panelEl) { panelEl = document.createElement('div'); panelEl.className = 'soc-panel'; panelEl.setAttribute('role', 'dialog'); panelEl.setAttribute('aria-label', 'Emote dan quick chat'); document.body.appendChild(panelEl); }
+    if (!panelEl) { panelEl = document.createElement('div'); panelEl.className = 'soc-panel'; panelEl.setAttribute('role', 'dialog'); document.body.appendChild(panelEl); }
+    panelEl.setAttribute('aria-label', tr('Emotes and quick chat', 'Emote dan quick chat'));
     const sc = panelEl.querySelector('.soc-body'), keep = sc ? sc.scrollTop : 0;
     panelEl.innerHTML = panelHTML(v);
     const nb = panelEl.querySelector('.soc-body'); if (nb) nb.scrollTop = keep;
@@ -428,6 +437,12 @@
     const m = panelEl && panelEl.querySelector('.soc-msg'); if (!m) return;
     m.textContent = t; clearTimeout(msgT); msgT = setTimeout(() => { if (m) m.textContent = ''; }, 1800);
   }
+  function labelOpeners() {
+    document.querySelectorAll('[data-social-open]').forEach((b) => {
+      b.setAttribute('aria-label', tr('Emotes and quick chat', 'Emote dan quick chat'));
+      const s = b.querySelector && b.querySelector('span'); if (s) s.textContent = tr('Emote', 'Emote');
+    });
+  }
   function syncOpeners() {
     document.querySelectorAll('[data-social-open]').forEach((b) => b.setAttribute('aria-expanded', open));
   }
@@ -439,6 +454,8 @@
 
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('capsa:social', (e) => receive(e.detail));
+    // language switched on this phone: the open panel and the button follow (bubbles already on screen just fade out)
+    document.addEventListener('capsa:lang', () => { labelOpeners(); if (open && panelEl) refresh(); });
     document.addEventListener('capsa:render', () => {
       const v = view();
       if (!canSocial(v)) { Object.keys(slots).forEach((s) => clearSlot(+s)); if (open) closePanel(); return; }
@@ -450,10 +467,11 @@
       if (head && !head.querySelector('[data-social-open]') && (!v.online || v.me != null)) {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'btn soc-open'; b.dataset.socialOpen = '1';
-        b.setAttribute('aria-label', 'Emote dan quick chat'); b.setAttribute('aria-expanded', open);
-        b.innerHTML = FX().mascotSVG('smirk').replace('m-smirk', 'm-icon') + '<span>Emote</span>';
+        b.setAttribute('aria-expanded', open);
+        b.innerHTML = FX().mascotSVG('smirk').replace('m-smirk', 'm-icon') + '<span></span>';
         const sh = head.querySelector('[data-showhand]'); if (sh) head.insertBefore(b, sh); else head.appendChild(b);
       }
+      labelOpeners();
       if (open) { if (!panelEl || !panelEl.isConnected) refresh(); else { position(); syncOpeners(); } }
     });
     // taps that close the panel never reach the table (no accidental card picks)
@@ -482,8 +500,8 @@
       else if (d.social) {
         const r = send(d.social, { to: target });
         if (r.ok) { target = null; closePanel(); }
-        else if (r.why === 'cooldown') { msg(`Sabar, ${(r.ms / 1000).toFixed(1)} detik lagi.`); b.classList.remove('soc-shake'); void b.offsetWidth; b.classList.add('soc-shake'); }
-        else msg('Belum bisa kirim sekarang.');
+        else if (r.why === 'cooldown') { msg(tr(`Hold up, ${(r.ms / 1000).toFixed(1)}s left.`, `Sabar, ${(r.ms / 1000).toFixed(1)} detik lagi.`)); b.classList.remove('soc-shake'); void b.offsetWidth; b.classList.add('soc-shake'); }
+        else msg(tr("Can't send right now.", 'Belum bisa kirim sekarang.'));
       }
     }, true);
     document.addEventListener('change', (e) => {

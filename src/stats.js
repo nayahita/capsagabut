@@ -57,16 +57,18 @@
     let rows = all();
     if (want.length) rows = rows.filter((r) => want.includes(key(r.name)));
     rows.sort((a, b) => b.wins - a.wins || b.winRate - a.winRate);
-    const cols = [['Ronde', 'rounds'], ['Habis duluan', 'wins'], ['Win %', 'winRate'], ['Kalah', 'losses'], ['Poin', 'points'], ['Streak terbaik', 'bestWinStreak'],
-      ['Bad beat', 'badBeats'], ['Comeback', 'comebacks'], ['Upset', 'upsets'], ['Perfect', 'perfects'], ['Revenge', 'revenges'], ['Menang bom', 'bombWins']];
+    // headers are built here, every time the panel is drawn, so they follow the phone's language
+    const cols = [[tr('Rounds', 'Ronde'), 'rounds'], [tr('Out first', 'Habis duluan'), 'wins'], [tr('Win %', 'Win %'), 'winRate'], [tr('Losses', 'Kalah'), 'losses'],
+      [tr('Points', 'Poin'), 'points'], [tr('Best streak', 'Streak terbaik'), 'bestWinStreak'], [tr('Bad beats', 'Bad beat'), 'badBeats'], [tr('Comebacks', 'Comeback'), 'comebacks'],
+      [tr('Upsets', 'Upset'), 'upsets'], [tr('Perfects', 'Perfect'), 'perfects'], [tr('Revenges', 'Revenge'), 'revenges'], [tr('Bomb wins', 'Menang bom'), 'bombWins']];
     const body = rows.length
       ? rows.map((r) => `<tr><th scope="row">${esc(r.name)}</th>${cols.map(([, f]) => `<td>${f === 'points' && r[f] > 0 ? '+' : ''}${r[f]}${f === 'winRate' ? '%' : ''}</td>`).join('')}</tr>`).join('')
-      : `<tr><td colspan="${cols.length + 1}" class="empty">Belum ada data. Main satu ronde dulu.</td></tr>`;
-    return `<section class="stats-panel" aria-label="Statistik pemain">
-      <div class="stats-head"><h3>Statistik${want.length ? ' pemain di meja ini' : ''}</h3>
-        <span class="stats-note">Kesimpen di device ini, dihitung per nama pemain.</span></div>
-      <div class="stats-scroll"><table class="stats-table"><thead><tr><th scope="col">Pemain</th>${cols.map(([l]) => `<th scope="col">${l}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
-      <div class="stats-actions">${want.length ? '<button class="btn" data-act="stats-all">Lihat semua pemain</button>' : ''}<button class="btn" data-act="stats-reset">Reset statistik</button></div>
+      : `<tr><td colspan="${cols.length + 1}" class="empty">${tr('No data yet. Play a round first.', 'Belum ada data. Main satu ronde dulu.')}</td></tr>`;
+    return `<section class="stats-panel" aria-label="${tr('Player stats', 'Statistik pemain')}">
+      <div class="stats-head"><h3>${want.length ? tr('Stats for this table', 'Statistik pemain di meja ini') : tr('Stats', 'Statistik')}</h3>
+        <span class="stats-note">${tr('Saved on this device, counted per player name.', 'Kesimpen di device ini, dihitung per nama pemain.')}</span></div>
+      <div class="stats-scroll"><table class="stats-table"><thead><tr><th scope="col">${tr('Player', 'Pemain')}</th>${cols.map(([l]) => `<th scope="col">${l}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>
+      <div class="stats-actions">${want.length ? `<button class="btn" data-act="stats-all">${tr('Show all players', 'Lihat semua pemain')}</button>` : ''}<button class="btn" data-act="stats-reset">${tr('Reset stats', 'Reset statistik')}</button></div>
     </section>`;
   }
 

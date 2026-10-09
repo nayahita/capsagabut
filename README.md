@@ -17,6 +17,12 @@ Link main: **https://nayahita.github.io/capsagabut/**
 
 Nanti muncul ikon Capsa di layar HP. Dibukanya full screen tanpa address bar. Mode satu device tetap bisa dimainin walau offline, asal game-nya udah pernah dibuka sekali pas ada internet.
 
+## Bahasa
+
+Default-nya **English**. Tombol **🌐 EN / ID** di atas buat ganti ke **Bahasa Indonesia** (dan balik lagi), kapan aja, termasuk di tengah game. Pilihannya disimpen di HP masing-masing, jadi di mabar online tiap orang bisa beda bahasa: riwayat meja, banner, quick chat, dan bit komedi tampil sesuai bahasa HP itu. Chat ketik bebas tetap apa adanya.
+
+Semua teks pakai `tr('English', 'Indonesia')` (lihat `src/i18n.js`). Kalau nambah teks baru, tulis dua-duanya.
+
 ## Cara main: satu device
 
 1. Pilih **Satu device**, jumlah pemain (2–4), isi nama sesuai urutan duduk, terus klik **Kocok & bagi kartu**.
@@ -239,5 +245,5 @@ Suara meja dibikin langsung di browser pakai Web Audio; suara komedi pakai file 
 
 ## Tes
 
-- `bash tests/run.sh` jalanin semua tes unit (Node): aturan komedi, memory, profil & catatan room, mode satu kalah, bit v2, audio director, sistem sosial (validasi, jeda, voice, mute, riwayat), plus simulasi frekuensi komedi.
-- `bash tests/run.sh --sim` nambahin simulasi browser (Python + Playwright + Chromium): 3 ronde offline, mabar 3 HP, room ditutup lalu dibuka lagi, pamer kartu (tahan / tap / putus koneksi), dan emote & quick chat (`tests/sim/social.py`). Firebase-nya palsu (`tests/sim/fakefb.js`), jadi gak nyentuh database beneran.
+- `bash tests/run.sh` jalanin semua tes unit (Node): aturan komedi, memory, profil & catatan room, mode satu kalah, bit v2, audio director, sistem sosial (validasi, jeda, voice, mute, riwayat), teks komedi dua bahasa, plus simulasi frekuensi komedi.
+- `bash tests/run.sh --sim` nambahin simulasi browser (Python + Playwright + Chromium): 3 ronde offline, mabar 3 HP, room ditutup lalu dibuka lagi, pamer kartu (tahan / tap / putus koneksi), emote & quick chat (`tests/sim/social.py`), dan bahasa (`tests/sim/i18n.py`: nyari kata Indonesia yang nyangkut di mode English, ganti bahasa di tengah game, 2 HP beda bahasa). Firebase-nya palsu (`tests/sim/fakefb.js`), jadi gak nyentuh database beneran.

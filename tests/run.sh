@@ -10,7 +10,7 @@ for t in tests/unit/*.test.js; do
 done
 echo "--- comedy frequency (simulated, last-loses rule) ---"; node tests/unit/frequency.report.js | head -1
 if [ "$1" = "--sim" ]; then
-  for s in tests/sim/offline-rounds.py tests/sim/online.py tests/sim/rooms-lore-showhand.py tests/sim/social.py; do
+  for s in tests/sim/offline-rounds.py tests/sim/online.py tests/sim/rooms-lore-showhand.py tests/sim/social.py tests/sim/i18n.py; do
     echo "--- $s"; python3 "$s" || fail=1
   done
 fi

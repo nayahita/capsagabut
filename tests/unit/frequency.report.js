@@ -4,7 +4,7 @@ global.window=global;global.addEventListener=()=>{};global.CustomEvent=class ext
 global.matchMedia=()=>({matches:false});
 const perfs=[];const N=['Ana','Budi','Cici','Dodi'];
 global.CapsaFX={view:()=>({authority:true,names:N,timer:30,online:false}),broadcast:(t,d)=>perfs.push(d),holdTimer(){},duck(){},label:c=>'c'+c,soundOn:()=>false};
-for(const f of ['reactions.config.js','events.js','stats.js','lore.js','reactions.js','comedy/config.js','comedy/director.js','comedy/memory.js','comedy/bits.js'])eval(fs.readFileSync(src+f,'utf8'));
+for(const f of ['i18n.js','reactions.config.js','events.js','stats.js','lore.js','reactions.js','comedy/config.js','comedy/director.js','comedy/memory.js','comedy/bits.js'])eval(fs.readFileSync(src+f,'utf8'));
 const LASTMODE=process.argv[2]!=='points';const E=CapsaEvents,D=CapsaComedy,wait=ms=>new Promise(r=>setTimeout(r,ms));
 let fake=0;const realNow=Date.now;Date.now=()=>realNow()+fake;
 (async()=>{let tot=0,rounds=0;const by={},ids={};

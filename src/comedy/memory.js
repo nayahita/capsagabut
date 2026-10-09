@@ -14,6 +14,10 @@
  *
  * Players are keyed by their id (pid, from src/lore.js) when there is one, so notes survive a rename.
  * Notes that outlive the match go to CapsaLore at 'match:end'.
+ *
+ * Language: moment texts are stored in both languages, { en, id } (quoted chat stays a plain string), so the match
+ * report and later callbacks can show them in whatever language the phone uses then: CapsaI18n.pick(m.text).
+ * Titles are resolved when asked for (title(), titleOf()); titleId() gives the stable id.
  */
 (function () {
   'use strict';
@@ -43,6 +47,9 @@
   const quadRank = (hand) => { const c = {}; for (const x of hand || []) { c[RANK(x)] = (c[RANK(x)] || 0) + 1; if (c[RANK(x)] === 4) return RANK(x); } return -1; };
   const hasQuad = (hand) => quadRank(hand) >= 0;
   const label = (c) => (window.CapsaFX && window.CapsaFX.label ? window.CapsaFX.label(c) : String(c));
+  // a text in both languages, for memory that outlives the current language setting
+  const both = (fn) => (window.CapsaI18n ? window.CapsaI18n.both(fn) : fn());
+  const say = (v) => (window.CapsaI18n ? window.CapsaI18n.pick(v) : v && typeof v === 'object' ? (v.en != null ? v.en : v.id) : v);
 
   let M, R = null, last = null, setupSeq = 0;
   function newMatch(names) {
@@ -106,7 +113,7 @@
       const k = key(n); if (!usesLore(k) || !once('ret:' + k)) return;
       const ds = Lore().dossier(k); if (!ds || !(ds.matches > 0)) return;
       const q = Lore().quotable(k).slice(-1)[0] || null;
-      sig('MEM_RETURNING', { seat: i, name: n, matches: ds.matches, title: title(n), moment: q });
+      sig('MEM_RETURNING', { seat: i, name: n, matches: ds.matches, title: both(() => title(n)), titleId: titleId(n), moment: q });
     });
     if ((d.round || 0) === 1 && Lore() && Lore().renamed) {
       const rn = Lore().renamed();
@@ -261,10 +268,10 @@
       if (twos.length) twosDiedNow.push({ i, n });
       if (twos.length >= 2) { repBump(n, 'hoards'); M.twosDied += twos.length; M.twosDiedBy[key(n)] = (M.twosDiedBy[key(n)] || 0) + 1; }
       if (twos.length && R.passPlayable[i] > 0) addSetup({ type: 'prasasti', name: n, round: d.round, cards: twos });
-      if (twos.length >= 2) moment(d.round, n, `mati megang ${twos.map(label).join(' ')}`, 5, true, 'hoard');
+      if (twos.length >= 2) { const cs = twos.map(label).join(' '); moment(d.round, n, both(() => tr(`died holding ${cs}`, `mati megang ${cs}`)), 5, true, 'hoard'); }
       const q = quadRank(hand);
-      if (q >= 0) { repBump(n, 'bombDeaths'); addSetup({ type: 'prasasti', name: n, round: d.round, cards: hand.filter((c) => RANK(c) === q), bomb: true }); moment(d.round, n, 'mati megang Four of a Kind', 5, true, 'bombDeath'); }
-      if (left === 13) { repBump(n, 'sealed'); moment(d.round, n, 'selesai masih pegang 13 kartu', 9, true, 'sealed'); }
+      if (q >= 0) { repBump(n, 'bombDeaths'); addSetup({ type: 'prasasti', name: n, round: d.round, cards: hand.filter((c) => RANK(c) === q), bomb: true }); moment(d.round, n, both(() => tr('died holding a Four of a Kind', 'mati megang Four of a Kind')), 5, true, 'bombDeath'); }
+      if (left === 13) { repBump(n, 'sealed'); moment(d.round, n, both(() => tr('finished still holding all 13 cards', 'selesai masih pegang 13 kartu')), 9, true, 'sealed'); }
       repMax(n, 'worstLossStreak', M.streak[key(n)].loss);
     });
 
@@ -274,15 +281,16 @@
       if (i < 0) return;
       const outcome = lost(i) ? 'lost' : 'won';
       sig('MEM_THREAD_RESOLVED', { seat: i, name: nm[i], outcome, originRound: t.round, times: t.times });
-      if (outcome === 'won') { t.state = 'closed'; moment(d.round, nm[i], 'akhirnya menang di situasi kartu terakhir', 4); }
-      else { t.state = 'open'; t.times = (t.times || 1) + 1; t.lastRound = d.round; moment(d.round, nm[i], `kalah di kartu terakhir (lagi, ke-${t.times})`, 7, true, 'lastCard'); }
+      if (outcome === 'won') { t.state = 'closed'; moment(d.round, nm[i], both(() => tr('finally won a last-card situation', 'akhirnya menang di situasi kartu terakhir')), 4); }
+      else { t.state = 'open'; t.times = (t.times || 1) + 1; t.lastRound = d.round; const n = t.times; moment(d.round, nm[i], both(() => tr(`lost on the last card (again, #${n})`, `kalah di kartu terakhir (lagi, ke-${n})`)), 7, true, 'lastCard'); }
     });
     nm.forEach((n, i) => {
       if (!lost(i) || d.counts[i] !== 1) return;
       if (!M.threads.some((t) => t.type === 'lastCard' && t.key === key(n) && t.state !== 'closed')) {
         M.threads.push({ type: 'lastCard', key: key(n), name: n, round: d.round, state: 'open', times: 1 });
         const card = (row.hands[i] || [])[0];
-        moment(d.round, n, `kalah, sisa 1 kartu${card != null ? ` (${label(card)})` : ''}`, 5, true, 'lastCard');
+        const cl = card != null ? ` (${label(card)})` : '';
+        moment(d.round, n, both(() => tr(`lost with 1 card left${cl}`, `kalah, sisa 1 kartu${cl}`)), 5, true, 'lastCard');
       }
     });
 
@@ -307,7 +315,7 @@
       const bi = nm.findIndex((x) => key(x) === g.bullyKey);
       if (bi < 0 || bi === w) return true;
       sig('MEM_GRUDGE_SETTLED', { seat: w, name: wName, bully: nm[bi], bullySeat: bi, round: g.round, pen: g.pen, cards: g.cards, mode: g.mode });
-      repBump(wName, 'revenges'); moment(d.round, wName, `bales dendam ke ${nm[bi]} (utang ronde ${g.round})`, 6);
+      repBump(wName, 'revenges'); moment(d.round, wName, both(() => tr(`got revenge on ${nm[bi]} (debt from round ${g.round})`, `bales dendam ke ${nm[bi]} (utang ronde ${g.round})`)), 6);
       return false;
     });
     nm.forEach((n, i) => {
@@ -322,13 +330,13 @@
       const ti = nm.findIndex((x) => key(x) === M.bounty.key);
       if (ti >= 0 && ti !== w) {
         sig('MEM_BOUNTY_CLAIMED', { seat: w, name: wName, target: M.bounty.name, targetSeat: ti, streak: M.bounty.streak });
-        repBump(wName, 'bountiesClaimed'); moment(d.round, wName, `ngeklaim bounty ${M.bounty.name}`, 6);
+        const bn = M.bounty.name; repBump(wName, 'bountiesClaimed'); moment(d.round, wName, both(() => tr(`claimed ${bn}'s bounty`, `ngeklaim bounty ${bn}`)), 6);
         M.bounty = null;
       }
     }
     const ws = M.streak[key(wName)];
     if (!M.bounty && ws && ws.win >= 3) { M.bounty = { key: key(wName), name: wName, round: d.round, streak: ws.win }; sig('MEM_BOUNTY_POSTED', { seat: w, name: wName, streak: ws.win }); }
-    if (d.how === 'bomb') moment(d.round, wName, 'menang pakai bom', 3);
+    if (d.how === 'bomb') moment(d.round, wName, both(() => tr('won with a bomb', 'menang pakai bom')), 3);
 
     // the system's favorite: lowest score after the first round; replaced after 3 losses in a row
     if (!M.favorite && Array.isArray(d.scoresAfter) && d.scoresAfter.length) {
@@ -351,7 +359,10 @@
     // third bad incident for a player this match
     nm.forEach((n, i) => {
       const bad = M.moments.filter((m) => m.bad && m.key === key(n));
-      if (badBefore[key(n)] < 3 && bad.length >= 3) sig('MEM_INCIDENT', { seat: i, name: n, lines: bad.slice(0, 3).map((m) => `R${m.round} · ${m.text}`) });
+      if (badBefore[key(n)] < 3 && bad.length >= 3) {
+        const items = bad.slice(0, 3).map((m) => ({ round: m.round, text: m.text }));
+        sig('MEM_INCIDENT', { seat: i, name: n, items, lines: items.map((m) => `R${m.round} · ${say(m.text)}`) });
+      }
     });
 
     // dealt hand vs result
@@ -363,7 +374,7 @@
     // shown cards, laughing emotes: did it age well?
     Object.entries(R.revealed || {}).forEach(([s, r]) => {
       const i = +s, outcome = i === w ? 'won' : lost(i) ? 'lost' : 'mid';
-      if (outcome === 'lost') { moment(d.round, nm[i], 'pamer kartu, terus kalah', 7, true, 'revealLost'); addSetup({ type: 'revealLost', name: nm[i], round: d.round, cards: r.cards, cardsLeft: d.counts[i] }); }
+      if (outcome === 'lost') { moment(d.round, nm[i], both(() => tr('showed their cards, then lost', 'pamer kartu, terus kalah')), 7, true, 'revealLost'); addSetup({ type: 'revealLost', name: nm[i], round: d.round, cards: r.cards, cardsLeft: d.counts[i] }); }
       sig('MEM_REVEAL_RESOLVED', { seat: i, name: nm[i], outcome, cards: r.cards, cardsLeft: d.counts[i], secs: Math.max(1, Math.round((now - r.t) / 1000)) });
     });
     Object.entries(R.emoted || {}).forEach(([s, x]) => {
@@ -414,18 +425,30 @@
   });
 
   /* ---------- read API ---------- */
-  function title(n) { return titleOf(key(n)); }
-  function titleOf(k) {
+  // reputation titles: stable id → text, resolved in the phone's language when shown
+  const TITLES = {
+    allTalk: () => tr('All Talk', 'Mulut Duluan'), sealKeeper: () => tr('Keeper of the Seal', 'Penjaga Segel'),
+    nearMiss: () => tr('Near-Miss Specialist', 'Spesialis Nyaris'), twosCollector: () => tr('Collector of 2s', 'Kolektor Kartu 2'),
+    unusedBomb: () => tr('Owner of an Unused Bomb', 'Pemilik Bom Tak Terpakai'), proAfk: () => tr('Professional AFK', 'AFK Profesional'),
+    peace: () => tr('Ambassador of Peace', 'Duta Perdamaian'), grudge: () => tr('Certified Grudge-Holder', 'Pendendam Bersertifikat'),
+    lossSub: () => tr('Loss Subscriber', 'Langganan Kalah'), bomber: () => tr('Resident Bomber', 'Tukang Bom'),
+    enemy: () => tr('Common Enemy', 'Musuh Bersama'), donor: () => tr('Point Donor', 'Penyumbang Poin'),
+    regular: () => tr('Regular Citizen', 'Warga Biasa'), newcomer: () => tr('Newcomer', 'Pendatang Baru'),
+  };
+  function titleIdOf(k) {
     const r = repOf(k), wr = r.rounds ? r.wins / r.rounds : 0;
     const rules = [
-      [r.ezLosses >= 2, 'Mulut Duluan'], [r.sealed >= 1, 'Penjaga Segel'], [r.lastCardLosses >= 2, 'Spesialis Nyaris'],
-      [r.hoards >= 2, 'Kolektor Kartu 2'], [r.bombDeaths >= 1, 'Pemilik Bom Tak Terpakai'], [r.timeouts >= 3, 'AFK Profesional'],
-      [r.passivePasses >= 12, 'Duta Perdamaian'], [r.revenges >= 2, 'Pendendam Bersertifikat'], [r.worstLossStreak >= 5, 'Langganan Kalah'],
-      [r.bombWins >= 3, 'Tukang Bom'], [r.rounds >= 6 && wr >= 0.5, 'Musuh Bersama'], [r.rounds >= 6 && wr <= 0.1, 'Penyumbang Poin'],
+      [r.ezLosses >= 2, 'allTalk'], [r.sealed >= 1, 'sealKeeper'], [r.lastCardLosses >= 2, 'nearMiss'],
+      [r.hoards >= 2, 'twosCollector'], [r.bombDeaths >= 1, 'unusedBomb'], [r.timeouts >= 3, 'proAfk'],
+      [r.passivePasses >= 12, 'peace'], [r.revenges >= 2, 'grudge'], [r.worstLossStreak >= 5, 'lossSub'],
+      [r.bombWins >= 3, 'bomber'], [r.rounds >= 6 && wr >= 0.5, 'enemy'], [r.rounds >= 6 && wr <= 0.1, 'donor'],
     ];
     const hit = rules.find((x) => x[0]);
-    return hit ? hit[1] : (r.rounds >= 3 ? 'Warga Biasa' : 'Pendatang Baru');
+    return hit ? hit[1] : (r.rounds >= 3 ? 'regular' : 'newcomer');
   }
+  function titleOf(k) { return TITLES[titleIdOf(k)](); }
+  function title(n) { return titleOf(key(n)); }
+  function titleId(n) { return titleIdOf(key(n)); }
   // The player the director likes to bother: most points lost this match (after 2+ rounds).
   function target() {
     if (M.rounds.length < 2) return null;
@@ -443,7 +466,7 @@
     if (M.favorite) out.push({ kind: 'favorite', name: M.favorite.name });
     const hd = Object.entries(M.twosDiedBy).sort((a, b) => b[1] - a[1])[0];
     if (hd) out.push({ kind: 'hoarder', name: nm.find((n) => key(n) === hd[0]) || hd[0], count: hd[1] });
-    const ez = M.moments.filter((m) => m.bad && m.text.startsWith('"')).pop();
+    const ez = M.moments.filter((m) => m.bad && typeof m.text === 'string' && m.text.startsWith('"')).pop();   // quoted chat
     if (ez) out.push({ kind: 'trash', name: ez.name, text: ez.text });
     if (nm.length) {
       const LMm = last && last.mode === 'last';
@@ -457,7 +480,7 @@
     key, match: () => M, round: () => R, lastRound: () => last,
     streak: (n) => M.streak[key(n)] || { win: 0, loss: 0 },
     rep: (n) => repOf(key(n)),
-    title, titleOf, target, hasQuad, habit, lore,
+    title, titleOf, titleId, titleIdOf, target, hasQuad, habit, lore,
     spiral: (n) => !!M.spiral[key(n)], tableHot, pidOf: (n) => key(n),
     mode: () => (last && last.mode) || 'points', losses: (n) => M.losses[key(n)] || 0,
     support: (n) => { M.supported[key(n)] = true; }, supported: (n) => !!M.supported[key(n)],

@@ -263,18 +263,22 @@
     save(); flush();
   }
 
-  /* ---------- UI: setup chips, lobby claim, profile panel ---------- */
+  /* ---------- UI: setup chips, lobby claim, profile panel (texts built when drawn, in this phone's language) ---------- */
+  const nMatch = (n) => { n = n || 0; return tr(`${n} ${n === 1 ? 'match' : 'matches'}`, `${n} match`); };
+  const knownChip = (n) => `<span class="lore-ok">${tr('recognized', 'dikenali')} · ${nMatch(n)}</span>`;
+  const asChip = (name) => `<span class="lore-ok">${tr('linked to', 'dianggap')} ${esc(name)}</span>`;
+  const isThis = (name) => `<span>${tr(`Is this ${esc(name)}?`, `Ini ${esc(name)}?`)}</span>`;
   function chipFor(input) {
     let chip = input.nextElementSibling && input.nextElementSibling.classList.contains('lore-chip') ? input.nextElementSibling : null;
     const v = input.value, n = norm(v);
     const all = [...document.querySelectorAll('[data-name]')].map((x) => norm(x.value)).filter(Boolean);
     let html = '';
-    if (n && all.filter((x) => x === n).length > 1) html = '<span class="lore-warn">Nama ini udah dipakai, tambahin sesuatu?</span>';
+    if (n && all.filter((x) => x === n).length > 1) html = `<span class="lore-warn">${tr('That name is taken. Add something to it?', 'Nama ini udah dipakai, tambahin sesuatu?')}</span>`;
     else if (n) {
       const r = resolve(v), dec = decisions[n];
-      if (r.status === 'known') html = `<span class="lore-ok">dikenali · ${r.profile.matches || 0} match</span>`;
-      else if (r.status === 'similar' && dec == null) html = `<span>Ini ${esc(r.profile.name)}?</span><button type="button" class="chip" data-lore-yes="${r.pid}">Ya, gabungkan</button><button type="button" class="chip" data-lore-new>Orang baru</button>`;
-      else if (r.status === 'similar' && dec && dec !== 'new') html = `<span class="lore-ok">dianggap ${esc((L.profiles[dec] || {}).name || '')}</span>`;
+      if (r.status === 'known') html = knownChip(r.profile.matches);
+      else if (r.status === 'similar' && dec == null) html = `${isThis(r.profile.name)}<button type="button" class="chip" data-lore-yes="${r.pid}">${tr('Yes, merge', 'Ya, gabungkan')}</button><button type="button" class="chip" data-lore-new>${tr('New player', 'Orang baru')}</button>`;
+      else if (r.status === 'similar' && dec && dec !== 'new') html = asChip((L.profiles[dec] || {}).name || '');
     }
     if (!html) { if (chip) chip.remove(); return; }
     if (!chip) { chip = document.createElement('div'); chip.className = 'lore-chip'; input.after(chip); }
@@ -316,12 +320,12 @@
     if (!li || li.querySelector('.lore-chip')) return;
     const known = Object.entries(L.profiles).find(([, p]) => p.uids && p.uids[r.uid]);
     let html = '';
-    if (known) html = `<span class="lore-ok">dikenali · ${known[1].matches || 0} match</span>`;
-    else if (me.claim && me.claim !== 'new' && L.profiles[me.claim]) html = `<span class="lore-ok">dianggap ${esc(L.profiles[me.claim].name)}</span>`;
+    if (known) html = knownChip(known[1].matches);
+    else if (me.claim && me.claim !== 'new' && L.profiles[me.claim]) html = asChip(L.profiles[me.claim].name);
     else if (!me.claim) {
       const res = resolve(me.name);
-      if (res.status === 'known') html = `<span class="lore-ok">dikenali · ${res.profile.matches || 0} match</span>`;
-      else if (res.status === 'similar') html = `<span>Ini ${esc(res.profile.name)}?</span><button type="button" class="chip" data-lore-claim="${res.pid}">Ya</button><button type="button" class="chip" data-lore-claim="new">Orang baru</button>`;
+      if (res.status === 'known') html = knownChip(res.profile.matches);
+      else if (res.status === 'similar') html = `${isThis(res.profile.name)}<button type="button" class="chip" data-lore-claim="${res.pid}">${tr('Yes', 'Ya')}</button><button type="button" class="chip" data-lore-claim="new">${tr('New player', 'Orang baru')}</button>`;
     }
     if (!html) return;
     const chip = document.createElement('div'); chip.className = 'lore-chip'; chip.innerHTML = html; li.appendChild(chip);
@@ -330,24 +334,27 @@
   function panelHTML() {
     const list = Object.entries(L.profiles).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
     const w = canWrite(), mem = window.CapsaMemory;
-    const where = mode === 'room' ? `Catatan room ${esc(roomCode)}${w ? '' : ' · cuma host yang bisa ngubah'}` : 'Catatan di device ini';
-    return `<div class="lore-panel"><h4>Profil pemain</h4><p class="lore-where">${where}. Momen memalukan cuma dibahas sampai 24 jam.</p>
-      ${list.length ? `<ul>${list.map(([pid, p]) => `<li><b>${esc(p.name)}</b>${(p.aliases || []).length ? ` <small>juga: ${esc(p.aliases.join(', '))}</small>` : ''}
-        <span class="lore-meta">${p.matches || 0} match${mem && mem.titleOf ? ` · ${esc(mem.titleOf(pid))}` : ''}</span>
-        ${w ? `<span class="lore-btns"><button type="button" class="chip" data-lore-act="rename" data-pid="${pid}">Ganti nama</button><button type="button" class="chip" data-lore-act="merge" data-pid="${pid}">Gabungkan…</button><button type="button" class="chip" data-lore-act="forget" data-pid="${pid}">Hapus catatan</button></span>` : ''}</li>`).join('')}</ul>`
-        : '<p class="lore-where">Belum ada profil. Profil dibuat abis ronde pertama selesai.</p>'}</div>`;
+    const where = mode === 'room'
+      ? tr(`Notes for room ${esc(roomCode)}`, `Catatan room ${esc(roomCode)}`) + (w ? '' : tr(' · only the host can edit them', ' · cuma host yang bisa ngubah'))
+      : tr('Notes on this device', 'Catatan di device ini');
+    return `<div class="lore-panel"><h4>${tr('Player profiles', 'Profil pemain')}</h4><p class="lore-where">${where}. ${tr('Embarrassing moments only get brought up for 24 hours.', 'Momen memalukan cuma dibahas sampai 24 jam.')}</p>
+      ${list.length ? `<ul>${list.map(([pid, p]) => `<li><b>${esc(p.name)}</b>${(p.aliases || []).length ? ` <small>${tr('aka', 'juga')}: ${esc(p.aliases.join(', '))}</small>` : ''}
+        <span class="lore-meta">${nMatch(p.matches)}${mem && mem.titleOf ? ` · ${esc(mem.titleOf(pid))}` : ''}</span>
+        ${w ? `<span class="lore-btns"><button type="button" class="chip" data-lore-act="rename" data-pid="${pid}">${tr('Rename', 'Ganti nama')}</button><button type="button" class="chip" data-lore-act="merge" data-pid="${pid}">${tr('Merge…', 'Gabungkan…')}</button><button type="button" class="chip" data-lore-act="forget" data-pid="${pid}">${tr('Delete notes', 'Hapus catatan')}</button></span>` : ''}</li>`).join('')}</ul>`
+        : `<p class="lore-where">${tr('No profiles yet. Profiles are made once the first round ends.', 'Belum ada profil. Profil dibuat abis ronde pertama selesai.')}</p>`}</div>`;
   }
   function profileAction(act, pid) {
     const p = L.profiles[pid]; if (!p) return;
-    if (act === 'rename') { const n = prompt(`Nama baru buat ${p.name}:`, p.name); if (n) rename(pid, n); }
+    if (act === 'rename') { const n = prompt(tr(`New name for ${p.name}:`, `Nama baru buat ${p.name}:`), p.name); if (n) rename(pid, n); }
     if (act === 'merge') {
       const others = Object.entries(L.profiles).filter(([x]) => x !== pid);
-      if (!others.length) return alert('Belum ada profil lain.');
-      const pick = prompt(`Gabungkan ${p.name} ke profil mana? Ketik namanya:\n${others.map(([, o]) => o.name).join(', ')}`);
+      if (!others.length) return alert(tr('No other profiles yet.', 'Belum ada profil lain.'));
+      const list = others.map(([, o]) => o.name).join(', ');
+      const pick = prompt(tr(`Merge ${p.name} into which profile? Type the name:\n${list}`, `Gabungkan ${p.name} ke profil mana? Ketik namanya:\n${list}`));
       const hit = pick && others.find(([, o]) => norm(o.name) === norm(pick));
-      if (hit && confirm(`Semua catatan ${p.name} pindah ke ${hit[1].name}. Lanjut?`)) merge(pid, hit[0]);
+      if (hit && confirm(tr(`All of ${p.name}'s notes move to ${hit[1].name}. Continue?`, `Semua catatan ${p.name} pindah ke ${hit[1].name}. Lanjut?`))) merge(pid, hit[0]);
     }
-    if (act === 'forget' && confirm(`Hapus semua catatan ${p.name}? Gak bisa dibalikin.`)) forget(pid);
+    if (act === 'forget' && confirm(tr(`Delete all of ${p.name}'s notes? This can't be undone.`, `Hapus semua catatan ${p.name}? Gak bisa dibalikin.`))) forget(pid);
     rerenderPanels();
   }
   function rerenderPanels() {
@@ -356,6 +363,12 @@
     if (old) old.outerHTML = html; else sp.insertAdjacentHTML('beforeend', html);
   }
   document.addEventListener('capsa:render', () => {
+    setupChips(); lobbyClaim();
+    if (document.querySelector('.stats-panel')) rerenderPanels();
+  });
+  // language switched on this phone: redraw the chips (the lobby one is only added once, so drop it first) and the panel
+  document.addEventListener('capsa:lang', () => {
+    document.querySelectorAll('.plist .lore-chip').forEach((c) => c.remove());
     setupChips(); lobbyClaim();
     if (document.querySelector('.stats-panel')) rerenderPanels();
   });

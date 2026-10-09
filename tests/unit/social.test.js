@@ -27,7 +27,22 @@ const tick = (ms) => { clock += ms; };
   ok('catalog: 5 quick chat categories', C.CATEGORIES.length === 5 && C.CATEGORIES.every((c) => C.QUICK.some((q) => q.cat === c.id)));
   ok('catalog: 8–14 emotes', C.EMOTES.length >= 8 && C.EMOTES.length <= 14, C.EMOTES.length);
   ok('catalog: every id well-formed and unique', ids.every((i) => /^(qc|emo)\.[a-z0-9-]{1,24}$/.test(i)) && new Set(ids).size === C.QUICK.length + C.EMOTES.length);
-  ok('catalog: every voice reference exists and points at a local file', [...C.QUICK, ...C.EMOTES].filter((x) => x.voice).every((x) => C.VOICE[x.voice] && /^audio\/voice\/[a-z0-9-]+\.(mp3|ogg|wav)$/.test(C.VOICE[x.voice].file)));
+  const files = (f) => (typeof f === 'string' ? [f] : [f.en, f.id]);   // a recording may be per language: { en, id }
+  ok('catalog: every voice reference exists and points at a local file', [...C.QUICK, ...C.EMOTES].filter((x) => x.voice).every((x) => C.VOICE[x.voice] && files(C.VOICE[x.voice].file).every((f) => /^audio\/voice\/[a-z0-9-]+\.(mp3|ogg|wav)$/.test(f))));
+  // ---------- i18n: every text in the catalog exists in English and Indonesian ----------
+  const pair = (v) => !!(v && typeof v === 'object' && typeof v.en === 'string' && v.en.trim() && typeof v.id === 'string' && v.id.trim());
+  const missing = [
+    ...C.CATEGORIES.filter((c) => !pair(c.label)).map((c) => 'cat ' + c.id),
+    ...C.QUICK.filter((q) => !pair(q.text)).map((q) => 'qc ' + q.id),
+    ...C.EMOTES.filter((e) => !pair(e.label) || !pair(e.say)).map((e) => 'emo ' + e.id),
+    ...Object.entries(C.VOICE).filter(([, v]) => !pair(v.line)).map(([k]) => 'voice ' + k),
+    ...[...new Set(C.EMOTES.map((e) => e.pack || 'Dasar'))].filter((p) => !pair((C.PACKS || {})[p])).map((p) => 'pack ' + p),
+  ];
+  ok('i18n: every category label, quick chat, emote label/say, pack and voice line has en + id', missing.length === 0, missing.join(', '));
+  ok('i18n: English is the default, Indonesian kept', CapsaI18n.pick(C.QUICK.find((q) => q.id === 'belum').text) === 'Not over yet'
+    && CapsaI18n.inLang('id', () => CapsaI18n.pick(C.QUICK.find((q) => q.id === 'belum').text)) === 'Belum selesai');
+  ok('i18n: the banter category is English in English mode', CapsaI18n.pick(C.CATEGORIES.find((c) => c.id === 'local').label) === 'Banter'
+    && CapsaI18n.inLang('id', () => CapsaI18n.pick(C.CATEGORIES.find((c) => c.id === 'local').label)) === 'Bacot');
   ok('catalog: new emotes have a face', C.EMOTES.slice(6).every((e) => typeof e.face === 'function' && e.face({ ln: '', INK: '#000', MOUTH: '#000', TEAR: '#000' }).includes('<')));
 
   E.ingest('game:start', { names: V.names }); E.ingest('round:start', { round: 1, names: V.names, scores: [0, 0, 0, 0], starter: 0 });
@@ -133,6 +148,17 @@ const tick = (ms) => { clock += ms; };
   ok('history: summary by tone', (S.history.summary()[2] || {}).sent.taunt >= 1);
   ok('comedy: quick chat reached the memory as a trash-talk chat', CapsaMemory.match().chats.some((c) => c.text === '@Budi EZ' && c.trash));
   ok('comedy: target becomes a poke', CapsaMemory.match().chats.some((c) => c.target === 1));
+  // the 'chat' fact is built on each phone, in that phone's language (only the id travelled)
+  const chatsSeen = []; const offChat = E.on ? E.on('fact:chat', (c) => chatsSeen.push(c)) : null;
+  tick(10000); S.receive(ev('u3', 'qc.belum', 0, { to: 1 }));
+  tick(10000); CapsaI18n.inLang('id', () => S.receive(ev('u3', 'qc.belum', 0, { to: 1 })));
+  const [cEn, cId] = chatsSeen.slice(-2);
+  ok('i18n: quick chat reaches the comedy memory in this phone\'s language (en)', cEn && cEn.text === '@Budi Not over yet' && cEn.prediction, JSON.stringify(cEn));
+  ok('i18n: quick chat reaches the comedy memory in this phone\'s language (id)', cId && cId.text === '@Budi Belum selesai', JSON.stringify(cId));
+  ok('i18n: the chat fact also carries both languages', cId && cId.texts && cId.texts.en === '@Budi Not over yet' && cId.texts.id === '@Budi Belum selesai');
+  ok('i18n: memory stored the line as the phone said it', CapsaMemory.match().chats.some((c) => c.text === '@Budi Belum selesai') && CapsaMemory.match().chats.some((c) => c.text === '@Budi Not over yet'));
+  if (typeof offChat === 'function') offChat();
+  tick(10000); S.receive(ev('u1', 'emo.villain')); tick(2000);
   const lastFact = facts[facts.length - 1];
   ok('fact:social carries only catalog data', lastFact && lastFact.id === 'emo.villain' && lastFact.tone === 'taunt' && !('text' in lastFact));
   // the taunting emote backfires when Budi loses with plenty left (new emotes carry their tone)

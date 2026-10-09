@@ -1,10 +1,10 @@
 // Offline support. Game files are fetched fresh when online (so updates show up right away)
 // and served from the cache when offline.
-const CACHE = 'capsa-v14';
+const CACHE = 'capsa-v15';
 const CORE = [
   './', './index.html', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-maskable.png', './apple-touch-icon.png',
-  './src/reactions.config.js', './src/events.js', './src/stats.js', './src/lore.js', './src/reactions.js',
+  './src/i18n.js', './src/reactions.config.js', './src/events.js', './src/stats.js', './src/lore.js', './src/reactions.js',
   './src/comedy/config.js', './src/audio/director.js', './src/comedy/director.js', './src/comedy/memory.js', './src/comedy/bits.js', './src/comedy/stage.js', './src/chat.js', './src/showhand.js', './src/social/catalog.js', './src/social/social.js',
   './audio/win.wav', './audio/lose.wav', './audio/bad-beat.wav', './audio/comeback.wav', './audio/win-streak.wav',
   './audio/loss-streak.wav', './audio/upset.wav', './audio/perfect.wav', './audio/revenge.wav',

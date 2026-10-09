@@ -1,5 +1,5 @@
 /*
- * "Pamer kartu" (online only): show your own hand to the whole table, just to taunt.
+ * "Show cards" / "Pamer kartu" (online only): show your own hand to the whole table, just to taunt.
  * Works like a scope button in mobile shooters:
  *   tap  (press < 0.25 s) → cards stay shown; tap again to hide
  *   hold                   → cards shown while you hold; release to hide
@@ -69,7 +69,9 @@
     const b = document.querySelector('[data-showhand]'); if (!b) return;
     const on = mode !== 'off';
     b.setAttribute('aria-pressed', on);
-    b.textContent = mode === 'hold' ? 'Lagi pamer…' : mode === 'latched' ? 'Tutup kartu' : 'Pamer kartu';
+    b.textContent = mode === 'hold' ? tr('Showing…', 'Lagi pamer…') : mode === 'latched' ? tr('Hide cards', 'Tutup kartu') : tr('Show cards', 'Pamer kartu');
+    b.title = tr('Tap: your cards stay shown until you tap again. Hold: shown while you hold.', 'Tap: kartu lu kebuka sampai lu tap lagi. Tahan: kebuka selama ditahan.');
+    b.setAttribute('aria-label', tr('Show your cards to everyone', 'Pamer kartu ke semua pemain'));
   }
 
   // release is watched on the document: the core may redraw the button while it is held
@@ -85,8 +87,6 @@
     if (head.querySelector('[data-showhand]')) return syncBtn();
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'btn showhand-btn'; b.dataset.showhand = '1';
-    b.title = 'Tap: kartu lu kebuka sampai lu tap lagi. Tahan: kebuka selama ditahan.';
-    b.setAttribute('aria-label', 'Pamer kartu ke semua pemain');
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (x) {} down(); });
     b.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); down(); } });
     b.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -104,6 +104,7 @@
     el.style.left = Math.min(Math.max(x - w / 2, 8), innerWidth - w - 8) + 'px';
     el.style.top = (r ? Math.min(r.bottom + 6, innerHeight - el.offsetHeight - 8) : 80) + 'px';
   }
+  const shLabel = () => tr('is showing off', 'pamer kartu');
   function show(d) {
     const fx = FX(); if (!fx || d.seat == null || !Array.isArray(d.cards)) return;
     const cards = d.cards.filter((c) => Number.isInteger(c) && c >= 0 && c < 52).slice(0, 13);
@@ -117,7 +118,7 @@
     hide(d.seat);
     const el = document.createElement('div');
     el.className = 'showhand'; el.setAttribute('role', 'status');
-    el.innerHTML = `<div class="sh-head"><b></b> pamer kartu · <span class="sh-n">${cards.length}</span></div><div class="sh-cards">${cards.map((c) => fx.cardHTML(c)).join('')}</div>`;
+    el.innerHTML = `<div class="sh-head"><b></b> <span class="sh-lbl">${shLabel()}</span> · <span class="sh-n">${cards.length}</span></div><div class="sh-cards">${cards.map((c) => fx.cardHTML(c)).join('')}</div>`;
     el.querySelector('b').textContent = d.name || '';
     document.body.appendChild(el); place(el, d.seat);
     shown[d.seat] = { el, id: d.id, sig, timer: setTimeout(() => hide(d.seat, d.id), ttl) };
@@ -126,6 +127,11 @@
     const t = e.detail && e.detail.type, d = e.detail && e.detail.data; if (!d) return;
     if (t === 'showhand') show(d);
     else if (t === 'showhand-end') hide(d.seat, d.id);
+  });
+  // language switched on this phone: the button and any hand on screen follow
+  document.addEventListener('capsa:lang', () => {
+    syncBtn();
+    Object.keys(shown).forEach((s) => { const l = shown[s].el.querySelector('.sh-lbl'); if (l) l.textContent = shLabel(); });
   });
   document.addEventListener('capsa:render', () => {
     const v = view();

@@ -23,7 +23,7 @@ module.exports = function harness(opt = {}) {
     holdTimer() {}, duck() {}, label: (c) => 'c' + c, soundOn: () => H.sound, audio: () => null,
     room: () => H.room, fact: (t, d) => global.CapsaEvents.ingest(t, d), serverNow: () => Date.now(),
   };
-  const files = opt.files || ['reactions.config.js', 'events.js', 'stats.js', 'lore.js', 'reactions.js', 'comedy/config.js', 'comedy/director.js', 'comedy/memory.js', 'comedy/bits.js'];
+  const files = ['i18n.js'].concat(opt.files || ['reactions.config.js', 'events.js', 'stats.js', 'lore.js', 'reactions.js', 'comedy/config.js', 'comedy/director.js', 'comedy/memory.js', 'comedy/bits.js']);
   for (const f of files) {
     const p = path.join(SRC, f);
     if (fs.existsSync(p)) (0, eval)(fs.readFileSync(p, 'utf8'));

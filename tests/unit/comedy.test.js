@@ -6,7 +6,7 @@ global.matchMedia=()=>({matches:false});global.requestAnimationFrame=f=>setTimeo
 const perfs=[];
 const N=['Ana','Budi','Cici','Dodi'];
 global.CapsaFX={view:()=>({authority:true,names:N,timer:30,online:false}),broadcast:(t,d)=>perfs.push(d),holdTimer(){},duck(){},label:c=>'c'+c,soundOn:()=>false};
-for(const f of ['reactions.config.js','events.js','stats.js','reactions.js','comedy/config.js','comedy/director.js','comedy/memory.js','comedy/bits.js'])eval(fs.readFileSync(src+f,'utf8'));
+for(const f of ['i18n.js','reactions.config.js','events.js','stats.js','reactions.js','comedy/config.js','comedy/director.js','comedy/memory.js','comedy/bits.js'])eval(fs.readFileSync(src+f,'utf8'));
 const E=CapsaEvents, D=CapsaComedy, wait=ms=>new Promise(r=>setTimeout(r,ms));
 // record eligibility (when() truthy) per moment, independent of dice
 let elig=[];
@@ -88,7 +88,7 @@ setInterval(()=>{},1000).unref();
   const leg=perfs.filter(p=>p.rarity==='LEGENDARY').length;
   ok(`legendary cap 1 per match (got ${leg})`, leg===1);
   // note → memory moment
-  const hen=D.play('hening',{name:'Ana',round:4}); ok('hening carries a note for the match report', hen&&hen.note&&/hening/.test(hen.note.text));
+  const hen=D.play('hening',{name:'Ana',round:4}); ok('hening carries a note for the match report (both languages)', hen&&hen.note&&/silence/.test(hen.note.text)&&hen.alt&&/hening/.test(hen.alt.id.note.text));
   // demos all build
   let bad=[];for(const b of D.bits){try{const p=D.play(b.id);if(!p||!p.steps.length)bad.push(b.id)}catch(e){bad.push(b.id+':'+e.message)}}
   ok('every bit builds a timeline from its demo values ('+D.bits.length+' bits)', !bad.length); if(bad.length)console.log('   ',bad);

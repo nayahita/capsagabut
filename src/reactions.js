@@ -14,6 +14,7 @@
  *
  * Extend: CapsaReactions.defineEffect('name', (fx, event, cardEl) => { ... })
  * Preview: CapsaReactions.test('BAD_BEAT')
+ * Text: config strings may be { en, id } pairs; they are resolved in this phone's language when the card is shown.
  */
 (function () {
   'use strict';
@@ -25,6 +26,7 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   const fill = (str, ctx) => String(str || '').replace(/\{(\w+)\}/g, (m, k) => (ctx[k] != null ? ctx[k] : ''));
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const say = (v) => (window.CapsaI18n ? window.CapsaI18n.pick(v) : v && typeof v === 'object' ? (v.en != null ? v.en : v.id) : v);
 
   const lastType = {}, lastPlayer = {}, lastText = {};
   const queue = [];
@@ -97,8 +99,8 @@
   }
   function pickText(type, list) {
     if (!list || !list.length) return '';
-    let opts = list.length > 1 ? list.filter((t) => t !== lastText[type]) : list;
-    const t = pick(opts); lastText[type] = t; return t;
+    const idx = list.map((_, i) => i), opts = list.length > 1 ? idx.filter((i) => i !== lastText[type]) : idx;
+    const i = pick(opts); lastText[type] = i; return say(list[i]);
   }
   function show(c) {
     const fx = FX(), ev = c.ev, def = c.def;
@@ -109,9 +111,9 @@
     el.setAttribute('role', 'status');
     const text = pickText(ev.type, def.texts);
     el.innerHTML = `<div class="rx-mascot">${fx && fx.mascotSVG ? fx.mascotSVG(def.mascot || 'laugh') : ''}</div>
-      <div class="rx-body"><div class="rx-title">${esc(fill(def.title || ev.type, ctx))}</div>
+      <div class="rx-body"><div class="rx-title">${esc(fill(say(def.title) || ev.type, ctx))}</div>
       ${text ? `<p class="rx-text">${esc(fill(text, ctx))}</p>` : ''}
-      <div class="rx-meta">${def.stat ? `<span class="rx-stat">${esc(fill(def.stat, ctx))}</span>` : ''}${(c.tags || []).map((t) => `<span class="rx-tag">+ ${esc(fill(t.def.tag || t.def.title || t.ev.type, Object.assign({}, ctx, t.ev)))}</span>`).join('')}</div></div>`;
+      <div class="rx-meta">${def.stat ? `<span class="rx-stat">${esc(fill(say(def.stat), ctx))}</span>` : ''}${(c.tags || []).map((t) => `<span class="rx-tag">+ ${esc(fill(say(t.def.tag || t.def.title) || t.ev.type, Object.assign({}, ctx, t.ev)))}</span>`).join('')}</div></div>`;
     layer().appendChild(el);
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
     setTimeout(() => { el.classList.remove('in'); el.classList.add('out'); setTimeout(() => el.remove(), 450); }, S.displayMs);

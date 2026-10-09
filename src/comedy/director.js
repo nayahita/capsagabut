@@ -90,8 +90,9 @@
       ev: (t) => m.sig.find((e) => e.type === t), evs: (t) => m.sig.filter((e) => e.type === t) };
   }
   const label = (c) => (window.CapsaFX && window.CapsaFX.label ? window.CapsaFX.label(c) : String(c));
+  const locale = () => (window.CapsaI18n ? window.CapsaI18n.locale() : 'en-US');
   const helpers = { pick: (a) => a[Math.floor(Math.random() * a.length)], card: label, cards: (a) => (a || []).map(label).join(' '),
-    num: (x) => Number(x).toLocaleString('id-ID') };
+    num: (x) => Number(x).toLocaleString(locale()) };
 
   function evaluate(m) {
     if (m.fact === 'game:start') { st.perRound = { micro: 0, stage: 0 }; st.quiet = 0; st.legendary = 0; st.used.clear(); st.usedKeys.clear(); st.bitLast = {}; st.targets = []; return; }
@@ -153,11 +154,20 @@
     }
   }
 
+  // The deciding phone writes the performance in every language (scripts must stay side-effect free);
+  // each phone's stage then plays the one matching its own language setting.
+  // h.pick() replays the same dice in every language, so all phones see the same joke, just translated.
   function build(c, B) {
-    const steps = c.bit.script(c.v, B, helpers) || [];
+    const I = window.CapsaI18n, dice = [];
+    let di = 0;
+    const h = Object.assign({}, helpers, { pick: (a) => { if (di >= dice.length) dice.push(Math.random()); return a[Math.floor(dice[di++] * a.length)]; } });
+    const make = () => { di = 0; return { steps: c.bit.script(c.v, B, h) || [], note: c.bit.note ? c.bit.note(c.v, B) : null }; };
+    const all = I ? I.both(make) : { en: make() };
+    const main = all.en;
     const delay = (B.fact === 'round:end' ? (B.d.delay != null ? B.d.delay : 1900) : 0) + (c.bit.delay || 0);
-    const perf = { id: c.bit.id, mode: c.bit.mode, rarity: c.bit.rarity, weight: weightOf(c.bit), delay, steps };
-    if (c.bit.note) perf.note = c.bit.note(c.v, B);
+    const perf = { id: c.bit.id, mode: c.bit.mode, rarity: c.bit.rarity, weight: weightOf(c.bit), delay, steps: main.steps };
+    if (main.note) perf.note = main.note;
+    if (all.id) { perf.alt = { id: { steps: all.id.steps } }; if (all.id.note) perf.alt.id.note = all.id.note; }
     return perf;
   }
   function perform(c, B, local) {

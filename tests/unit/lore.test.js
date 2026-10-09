@@ -9,7 +9,7 @@ store['capsa-rep-v1']=JSON.stringify({ana:{name:'Ana',rounds:20,wins:9,lastCardL
 const perfs=[];let N=['Ana','Budi','Cici','Dodi'];let roomInfo=null;const saved=[];
 global.CapsaFX={view:()=>({authority:true,names:N,timer:30,online:false}),broadcast:(t,d)=>perfs.push(d),holdTimer(){},duck(){},label:c=>'c'+c,soundOn:()=>false,
   room:()=>roomInfo,fact:(t,d)=>CapsaEvents.ingest(t,d)};
-for(const f of ['reactions.config.js','events.js','stats.js','lore.js','reactions.js','comedy/config.js','comedy/director.js','comedy/memory.js','comedy/bits.js'])eval(fs.readFileSync(src+f,'utf8'));
+for(const f of ['i18n.js','reactions.config.js','events.js','stats.js','lore.js','reactions.js','comedy/config.js','comedy/director.js','comedy/memory.js','comedy/bits.js'])eval(fs.readFileSync(src+f,'utf8'));
 const E=CapsaEvents,D=CapsaComedy,L=CapsaLore,M=CapsaMemory,wait=ms=>new Promise(r=>setTimeout(r,ms));
 const sigs=[];E.on('*',ev=>{if(ev&&/^MEM_/.test(ev.type))sigs.push(ev)});
 let fails=0;const ok=(n,c,x)=>{if(!c)fails++;console.log((c?'PASS ':'FAIL ')+n+(x&&!c?'  → '+x:''))};

@@ -2,6 +2,7 @@
  * Stage: plays a director performance (a list of timeline steps) on this phone.
  * Also: reputation titles and bounty tag on seats, the post-match roast summary, and preview buttons.
  * Everything renders in its own layer; nothing here reads or changes game rules.
+ * Text drawn here is local to this phone, so it is resolved with tr() at render time (English / Indonesian).
  */
 (function () {
   'use strict';
@@ -11,6 +12,10 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms || 0)));
   const reduced = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const nextOf = (s) => (window.CapsaComedy ? window.CapsaComedy.nextOf(s) : (s.ms || 0));
+  const I18N = () => window.CapsaI18n;
+  const locale = () => (I18N() ? I18N().locale() : 'en-US');
+  const say = (v) => (I18N() ? I18N().pick(v) : v && typeof v === 'object' ? (v.en != null ? v.en : v.id) : v);   // a stored {en, id} text
+  const comboName = (c) => (I18N() ? I18N().combo(c) : c);
 
   /* ---------- root layer ---------- */
   let root = null;
@@ -71,18 +76,18 @@
   }
   const bar = (data, unit) => {
     const max = Math.max(...data.map((d) => d.value), 1), W = 300, rowH = 30, H = data.length * rowH + 6, lab = 110;
-    return `<svg viewBox="0 0 ${W} ${H}" class="cd-svg" role="img" aria-label="Grafik">${data.map((d, i) => {
+    return `<svg viewBox="0 0 ${W} ${H}" class="cd-svg" role="img" aria-label="${tr('Chart', 'Grafik')}">${data.map((d, i) => {
       const w = Math.max(2, ((W - lab - 46) * d.value) / max), y = i * rowH + 4;
       return `<text x="0" y="${y + 17}" class="cd-axis">${esc(String(d.label).slice(0, 18))}</text>
         <rect x="${lab}" y="${y + 4}" width="${w.toFixed(1)}" height="18" rx="3" fill="${i === 0 ? '#2563eb' : '#93a4c3'}"/>
-        <text x="${lab + w + 6}" y="${y + 17}" class="cd-val">${esc(String(d.value).replace('.', ','))}${unit || ''}</text>`;
+        <text x="${lab + w + 6}" y="${y + 17}" class="cd-val">${esc(tr(String(d.value), String(d.value).replace('.', ',')))}${unit || ''}</text>`;
     }).join('')}</svg>`;
   };
   const flat = () => {
     let pts = []; for (let x = 0; x <= 300; x += 10) pts.push(`${x},${(70 + (Math.random() - 0.5) * 1.2).toFixed(1)}`);
-    return `<svg viewBox="0 0 300 100" class="cd-svg" role="img" aria-label="Grafik datar">
+    return `<svg viewBox="0 0 300 100" class="cd-svg" role="img" aria-label="${tr('Flat chart', 'Grafik datar')}">
       <g stroke="#e3e8f0" stroke-width="1">${[20, 45, 70, 95].map((y) => `<line x1="0" x2="300" y1="${y}" y2="${y}"/>`).join('')}</g>
-      <text x="0" y="16" class="cd-axis">berani</text><text x="0" y="66" class="cd-axis">pass</text>
+      <text x="0" y="16" class="cd-axis">${tr('brave', 'berani')}</text><text x="0" y="66" class="cd-axis">pass</text>
       <polyline points="${pts.join(' ')}" fill="none" stroke="#2563eb" stroke-width="2.5"/></svg>`;
   };
 
@@ -107,13 +112,13 @@
         `cd-card cd-tone-${s.tone || 'win'}`, s.ms || 4000);
     },
     poster(s) {
-      put(`<div class="cd-p-title">${esc(s.title || 'DICARI')}</div><div class="cd-p-face">${FX() ? FX().mascotSVG('cool') : ''}</div>
+      put(`<div class="cd-p-title">${esc(s.title || tr('WANTED', 'DICARI'))}</div><div class="cd-p-face">${FX() ? FX().mascotSVG('cool') : ''}</div>
         <div class="cd-p-name">${esc(s.name)}</div>${s.sub ? `<div class="cd-p-sub">${esc(s.sub)}</div>` : ''}
         <div class="cd-p-reward">${esc(s.reward || '')}</div>${s.foot ? `<div class="cd-p-foot">${esc(s.foot)}</div>` : ''}`, 'cd-poster', s.ms || 4800);
     },
     receipt(s) {
       const d = new Date();
-      put(`<div class="cd-rc-title">${esc(s.title || 'STRUK')}</div><div class="cd-rc-meta">${d.toLocaleDateString('id-ID')} ${d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} · KASIR: SISTEM</div>
+      put(`<div class="cd-rc-title">${esc(s.title || tr('RECEIPT', 'STRUK'))}</div><div class="cd-rc-meta">${d.toLocaleDateString(locale())} ${d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })} · ${tr('CASHIER: SYSTEM', 'KASIR: SISTEM')}</div>
         <div class="cd-rc-lines">${(s.lines || []).map(([a, b]) => `<div><span>${esc(a)}</span><span>${esc(b)}</span></div>`).join('')}</div>
         ${s.total ? `<div class="cd-rc-total"><span>${esc(s.total[0])}</span><span>${esc(s.total[1])}</span></div>` : ''}
         ${s.foot ? `<div class="cd-rc-foot">${esc(s.foot)}</div>` : ''}`, 'cd-receipt', s.ms || 5000);
@@ -128,11 +133,11 @@
         requestAnimationFrame(step);
       });
     },
-    typing(s) { put('Sistem sedang mengetik<i></i><i></i><i></i>', 'cd-typing', s.ms || 3000); },
+    typing(s) { put(`${esc(tr('System is typing', 'Sistem sedang mengetik'))}<i></i><i></i><i></i>`, 'cd-typing', s.ms || 3000); },
     stamp(s) { put(esc(s.text), 'cd-stamp', s.ms || 1600); },
     replay(s) {
       const fx = FX();
-      const el = put(`<div class="cd-rp-tag">● ${esc(s.label || 'REPLAY')} · 0,25×</div><div class="cd-rp-cards">${(s.cards || []).map((c) => fx ? fx.cardHTML(c) : '').join('')}</div>
+      const el = put(`<div class="cd-rp-tag">● ${esc(s.label || 'REPLAY')} · ${tr('0.25×', '0,25×')}</div><div class="cd-rp-cards">${(s.cards || []).map((c) => fx ? fx.cardHTML(c) : '').join('')}</div>
         ${s.caption ? `<div class="cd-rp-cap">${esc(s.caption)}</div>` : ''}`, 'cd-replay', s.ms || 4500);
       if (s.block) el.style.pointerEvents = 'auto';
     },
@@ -141,7 +146,7 @@
         ? `<i class="cd-n-icon cd-n-cal"><b>${new Date().getDate()}</b></i>`
         : `<i class="cd-n-icon">${esc((s.app || 'S')[0])}</i>`;
       const btns = (s.buttons || []).map((b) => (typeof b === 'string' ? { label: b } : b));
-      const el = put(`<div class="cd-n-head">${icon}<span class="cd-n-app">${esc(s.app || 'Sistem')}</span><span class="cd-n-time">sekarang</span></div>
+      const el = put(`<div class="cd-n-head">${icon}<span class="cd-n-app">${esc(s.app || tr('System', 'Sistem'))}</span><span class="cd-n-time">${tr('now', 'sekarang')}</span></div>
         <div class="cd-n-title">${esc(s.title || '')}</div>${s.body ? `<div class="cd-n-body">${esc(s.body)}</div>` : ''}
         ${(s.lines || []).map((l) => `<div class="cd-n-body">${esc(l)}</div>`).join('')}
         ${s.later ? `<div class="cd-n-body cd-n-later" hidden>${esc(s.later.text)}</div>` : ''}
@@ -158,14 +163,14 @@
     },
     chart(s) {
       const body = s.kind === 'flat' ? flat() : s.kind === 'line' ? line(s.data || []) : bar(s.data || [], s.unit);
-      const el = put(`<div class="cd-ch-head"><span>ANALISIS</span><b>${esc(s.title)}</b>${s.sub ? `<small>${esc(s.sub)}</small>` : ''}</div>
+      const el = put(`<div class="cd-ch-head"><span>${tr('ANALYSIS', 'ANALISIS')}</span><b>${esc(s.title)}</b>${s.sub ? `<small>${esc(s.sub)}</small>` : ''}</div>
         ${body}${s.note ? `<p class="cd-ch-note"${s.noteAt ? ' hidden' : ''}>${esc(s.note)}</p>` : ''}`, 'cd-chart', s.ms || 5000);
       if (s.noteAt) setTimeout(() => { const n = el.querySelector('.cd-ch-note'); if (n) n.hidden = false; }, s.noteAt);
     },
     memory(s) {
       const fx = FX();
       put(`<div class="cd-mem-thumb">${s.card != null && fx ? fx.cardHTML(s.card) : ''}</div>
-        <div class="cd-mem-txt"><b>${esc(s.title || 'Kenangan')}</b><span>${esc(s.sub || '')}</span><small>${esc(s.caption || '')}</small></div>`, 'cd-mem', s.ms || 4000);
+        <div class="cd-mem-txt"><b>${esc(s.title || tr('Memories', 'Kenangan'))}</b><span>${esc(s.sub || '')}</span><small>${esc(s.caption || '')}</small></div>`, 'cd-mem', s.ms || 4000);
     },
     memorial(s) {
       const fx = FX();
@@ -182,22 +187,22 @@
     },
     cctv(s) {
       const fx = FX(), ms = s.ms || 5000;
-      const el = put(`<div class="cd-cctv-tag">● KAM 02 · MEJA · <span class="cd-cctv-clock"></span></div>
+      const el = put(`<div class="cd-cctv-tag">● ${tr('CAM 02 · TABLE', 'KAM 02 · MEJA')} · <span class="cd-cctv-clock"></span></div>
         <div class="cd-cctv-cards">${(s.cards || []).map((c) => (fx ? fx.cardHTML(c) : '')).join('')}</div>
         <div class="cd-cctv-cap" hidden>${esc(s.caption || '')}</div>`, 'cd-cctv', ms);
       el.style.pointerEvents = 'auto';
       document.documentElement.classList.add('cd-cctv-on');
       setTimeout(() => document.documentElement.classList.remove('cd-cctv-on'), ms);
       const clock = el.querySelector('.cd-cctv-clock');
-      const tick = () => { if (!el.isConnected) return; clock.textContent = new Date().toLocaleTimeString('id-ID', { hour12: false }); setTimeout(tick, 250); };
+      const tick = () => { if (!el.isConnected) return; clock.textContent = new Date().toLocaleTimeString(locale(), { hour12: false }); setTimeout(tick, 250); };
       tick();
       setTimeout(() => { const c = el.querySelector('.cd-cctv-cap'); if (c) c.hidden = false; }, s.captionAt || 2500);
     },
     tape(s) { put(`<div class="cd-tape-band"><span>${esc((s.text + '   ·   ').repeat(8))}</span></div>`, 'cd-tape', s.ms || 4000); },
     archive(s) {
-      const el = put(`<div class="cd-ar-tab">${esc(s.title || 'ARSIP')}</div>
+      const el = put(`<div class="cd-ar-tab">${esc(s.title || tr('ARCHIVE', 'ARSIP'))}</div>
         <div class="cd-ar-lines">${(s.lines || []).map((l) => `<div class="cd-ar-line" hidden>${esc(l)}</div>`).join('')}</div>
-        <div class="cd-ar-stamp" hidden>${esc(s.stamp || 'AKTIF')}</div>`, 'cd-archive', s.ms || 5500);
+        <div class="cd-ar-stamp" hidden>${esc(s.stamp || tr('ACTIVE', 'AKTIF'))}</div>`, 'cd-archive', s.ms || 5500);
       const rows = el.querySelectorAll('.cd-ar-line');
       rows.forEach((r, i) => setTimeout(() => { r.hidden = false; sound('typing'); }, 800 * (i + 1)));
       setTimeout(() => { const st = el.querySelector('.cd-ar-stamp'); if (st) { st.hidden = false; sound('stamp'); } }, 800 * (rows.length + 1) + 400);
@@ -208,9 +213,9 @@
         <div class="cd-reco-meta"><b>${esc(s.title || '')}</b><small>${esc(s.sub || '')}</small></div>`, 'cd-reco', s.ms || 4000);
     },
     patch(s) {
-      const el = put(`<div class="cd-pt-head"><b>${esc(s.title || 'Catatan pembaruan')}</b><code>${esc(s.version || '')}</code></div>
+      const el = put(`<div class="cd-pt-head"><b>${esc(s.title || tr('Patch notes', 'Catatan pembaruan'))}</b><code>${esc(s.version || '')}</code></div>
         <ul>${(s.lines || []).map((l) => `<li hidden>${esc(l)}</li>`).join('')}</ul>
-        <button type="button" class="btn primary">${esc(s.button || 'Perbarui')}</button>`, 'cd-patch', s.ms || 9000);
+        <button type="button" class="btn primary">${esc(s.button || tr('Update', 'Perbarui'))}</button>`, 'cd-patch', s.ms || 9000);
       el.style.pointerEvents = 'auto';
       el.querySelectorAll('li').forEach((li, i) => setTimeout(() => { li.hidden = false; }, 900 * (i + 1)));
       el.querySelector('button').addEventListener('click', () => { el.classList.add('out'); setTimeout(() => el.remove(), 300); });
@@ -218,7 +223,7 @@
     still(s) {
       const cd = s.countdown || 3000;
       const el = put(`<div class="cd-st-q">${esc(s.question || '')}</div><div class="cd-st-bar"><span></span></div>
-        <button type="button" class="btn">${esc(s.button || 'Masih')}</button>`, 'cd-still', cd + 1700);
+        <button type="button" class="btn">${esc(s.button || tr('Still here', 'Masih'))}</button>`, 'cd-still', cd + 1700);
       el.style.pointerEvents = 'auto';
       const bar = el.querySelector('.cd-st-bar span');
       requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transition = `width ${cd}ms linear`; bar.style.width = '0%'; }));
@@ -237,10 +242,10 @@
     },
     approve(s) { addDeco({ kind: 'approve', sig: s.sig, until: Date.now() + (s.ms || 600000) }); },
     tag(s) { addDeco({ kind: 'tag', seat: s.seat, text: s.text, cls: s.cls || '', until: Date.now() + (s.ms || 2500) }); },
-    predict(s) { addDeco({ kind: 'predict', seat: s.seat, combo: s.combo, text: `prediksi: ${s.combo}`, until: Date.now() + (s.ms || 90000) }); },
+    predict(s) { addDeco({ kind: 'predict', seat: s.seat, combo: s.combo, until: Date.now() + (s.ms || 90000) }); },
     ribbon(s) { addDeco({ kind: 'ribbon', seat: s.seat, until: Date.now() + (s.ms || 6000) }); },
     fakeSeat(s) {
-      const d = { kind: 'fakeSeat', name: s.name || 'Sistem', text: s.text || '13 kartu', until: Date.now() + (s.ms || 6500) };
+      const d = { kind: 'fakeSeat', name: s.name || tr('System', 'Sistem'), text: s.text || tr('13 cards', '13 kartu'), until: Date.now() + (s.ms || 6500) };
       addDeco(d);
       if (s.later) setTimeout(() => { d.text = s.later; decorate(); }, s.laterAt || 4500);
     },
@@ -269,17 +274,18 @@
     for (const d of deco) {
       const seat = d.seat != null ? document.getElementById('seat-' + d.seat) : null;
       if ((d.kind === 'tag' || d.kind === 'predict') && seat) {
-        const t = document.createElement('div'); t.className = 'cd-deco cd-seat-note ' + (d.cls || ''); t.textContent = d.text; seat.appendChild(t);
+        const t = document.createElement('div'); t.className = 'cd-deco cd-seat-note ' + (d.cls || '');
+        t.textContent = d.kind === 'predict' ? tr(`prediction: ${comboName(d.combo)}`, `prediksi: ${d.combo}`) : d.text; seat.appendChild(t);
       } else if (d.kind === 'ribbon' && seat) {
         const r = document.createElement('i'); r.className = 'cd-deco cd-ribbon'; r.setAttribute('aria-hidden', 'true'); seat.appendChild(r);
       } else if (d.kind === 'approve' && v && v.table && sigOf(v.table.cards) === d.sig) {
         const pl = document.querySelector('.board .played');
-        if (pl) { pl.style.position = 'relative'; const a = document.createElement('span'); a.className = 'cd-deco cd-approve'; a.textContent = '✓ disetujui'; pl.appendChild(a); }
+        if (pl) { pl.style.position = 'relative'; const a = document.createElement('span'); a.className = 'cd-deco cd-approve'; a.textContent = tr('✓ approved', '✓ disetujui'); pl.appendChild(a); }
       } else if (d.kind === 'fakeSeat') {
         const seats = document.querySelector('.seats');
         if (seats) {
           const f = document.createElement('div'); f.className = 'cd-deco seat cd-fake-seat';
-          f.innerHTML = `<div class="card back mini" aria-hidden="true"></div><div class="nm">${esc(d.name)}</div><div class="sc">0<small>poin</small></div><span></span><div class="ct">${esc(d.text)}</div>`;
+          f.innerHTML = `<div class="card back mini" aria-hidden="true"></div><div class="nm">${esc(d.name)}</div><div class="sc">0<small>${tr('pts', 'poin')}</small></div><span></span><div class="ct">${esc(d.text)}</div>`;
           seats.appendChild(f);
         }
       } else if (d.kind === 'score') {
@@ -293,7 +299,7 @@
       (r.passPlayable || []).forEach((n, i) => {
         if (n < 3) return;
         const pill = document.querySelector(`#seat-${i} .pill.pass`);
-        if (pill) pill.textContent = n >= 7 ? 'pass (prinsip hidup)' : n >= 5 ? 'pass (kebiasaan)' : 'pass (lagi)';
+        if (pill) pill.textContent = n >= 7 ? tr('pass (a way of life)', 'pass (prinsip hidup)') : n >= 5 ? tr('pass (habit)', 'pass (kebiasaan)') : tr('pass (again)', 'pass (lagi)');
       });
     }
   }
@@ -301,7 +307,7 @@
   if (window.CapsaEvents) window.CapsaEvents.on('fact:play', (d) => {
     const p = deco.find((x) => x.kind === 'predict' && x.seat === d.seat);
     if (!p) return;
-    p.kind = 'tag'; p.text = d.combo === p.combo ? '✓' : 'berkembang.'; p.until = Date.now() + 2600;
+    p.kind = 'tag'; p.text = d.combo === p.combo ? '✓' : tr('evolving.', 'berkembang.'); p.until = Date.now() + 2600;
     setTimeout(decorate, 2650); decorate();
   });
 
@@ -311,7 +317,7 @@
     const x = (i) => pad + (i * (W - pad - 10)) / Math.max(1, vals.length - 1), y = (val) => 10 + ((hi - val) * (H - 30)) / Math.max(1, hi - lo);
     const pts = vals.map((val, i) => `${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ');
     const lx = x(vals.length - 1), ly = y(vals[vals.length - 1]);
-    return `<svg viewBox="0 0 ${W} ${H}" class="cd-svg" role="img" aria-label="Grafik garis">
+    return `<svg viewBox="0 0 ${W} ${H}" class="cd-svg" role="img" aria-label="${tr('Line chart', 'Grafik garis')}">
       <line x1="${pad}" x2="${W - 10}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="#c9d2e3" stroke-dasharray="3 3"/>
       <text x="0" y="${(y(0) + 4).toFixed(1)}" class="cd-axis">0</text>
       <polyline points="${pts}" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round"/>
@@ -327,13 +333,13 @@
     if (rounds < 8 || document.querySelector('.cd-credits')) return;
     const names = M.rounds[rounds - 1].names, lore = mem.lore();
     const hoarder = lore.find((l) => l.kind === 'hoarder'), worst = lore.find((l) => l.kind === 'worst');
-    const lines = ['CAPSA BANTING', '', 'Pemeran', ...names.map((n) => `${n} sebagai ${mem.title(n)}`), ''];
-    if (hoarder) lines.push(`Pemeran pengganti kartu 2: ${hoarder.name}`);
-    lines.push('Penata hening: Sistem', '', 'Tidak ada kartu yang dilukai dalam pertandingan ini.');
-    if (worst) lines.push(`Kecuali milik ${worst.name}.`);
+    const lines = ['CAPSA BANTING', '', tr('Starring', 'Pemeran'), ...names.map((n) => tr(`${n} as ${mem.title(n)}`, `${n} sebagai ${mem.title(n)}`)), ''];
+    if (hoarder) lines.push(tr(`Stunt double for the 2s: ${hoarder.name}`, `Pemeran pengganti kartu 2: ${hoarder.name}`));
+    lines.push(tr('Silence supervisor: The System', 'Penata hening: Sistem'), '', tr('No cards were harmed in the making of this match.', 'Tidak ada kartu yang dilukai dalam pertandingan ini.'));
+    if (worst) lines.push(tr(`Except ${worst.name}'s.`, `Kecuali milik ${worst.name}.`));
     const wrap = document.createElement('div');
-    wrap.className = 'cd-credits'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-label', 'Kredit akhir');
-    wrap.innerHTML = `<div class="cd-cr-roll">${lines.map((l) => (l ? `<p>${esc(l)}</p>` : '<p class="cd-cr-gap"></p>')).join('')}</div><button type="button" class="btn" data-cd-skip>Lewati</button>`;
+    wrap.className = 'cd-credits'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-label', tr('End credits', 'Kredit akhir'));
+    wrap.innerHTML = `<div class="cd-cr-roll">${lines.map((l) => (l ? `<p>${esc(l)}</p>` : '<p class="cd-cr-gap"></p>')).join('')}</div><button type="button" class="btn" data-cd-skip>${tr('Skip', 'Lewati')}</button>`;
     document.body.appendChild(wrap);
     sound('credits');
     const close = () => { wrap.classList.add('out'); setTimeout(() => wrap.remove(), 400); };
@@ -343,7 +349,8 @@
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act="reset"],[data-act="leave-room"],[data-act="setup"]');
     if (!b) return;
-    if (b.dataset.act === 'reset' && !/Yakin/.test(b.textContent)) return;
+    // reset needs a second click to confirm (the button turns .warn); only that one ends the match
+    if (b.dataset.act === 'reset' && !b.classList.contains('warn') && !/Yakin|Sure|Confirm/i.test(b.textContent)) return;
     setTimeout(credits, 60);
   }, true);
 
@@ -359,8 +366,8 @@
     setTimeout(() => {
       const p = document.querySelector('.handoff p'); if (!p) return;
       p.style.transition = 'opacity .4s'; p.style.opacity = '0';
-      setTimeout(() => { p.textContent = 'Sebelum dioper, tolong lap layarnya dulu.'; p.style.opacity = '1'; }, 400);
-      setTimeout(() => { const s = document.createElement('p'); s.className = 'cd-lap-small'; s.textContent = 'Kami bisa merasakannya.'; p.after(s); }, 2900);
+      setTimeout(() => { p.textContent = tr('Before you pass the phone, please wipe the screen.', 'Sebelum dioper, tolong lap layarnya dulu.'); p.style.opacity = '1'; }, 400);
+      setTimeout(() => { const s = document.createElement('p'); s.className = 'cd-lap-small'; s.textContent = tr('We can feel it.', 'Kami bisa merasakannya.'); p.after(s); }, 2900);
     }, 2000);
   }
 
@@ -384,8 +391,13 @@
         if (wait > 0 && wait < 4000) await sleep(wait); else if (wait < -1500) curLate = true;
       }
       await sleep(p.delay || 0);
-      if (p.note && window.CapsaMemory) window.CapsaMemory.note(p.note.round, p.note.name, p.note.text, p.note.w);
-      for (const s of p.steps || []) { const f = R[s.do]; if (f) { try { f(s); } catch (e) { console.warn('[stage]', s.do, e); } } await sleep(nextOf(s)); }
+      const I = window.CapsaI18n, alt = I && p.alt && p.alt[I.lang()];   // this phone's language
+      const note = (alt && alt.note) || p.note, steps = (alt && alt.steps) || p.steps;
+      // the memory keeps the note in both languages (it can end up in the match report after a language switch)
+      const idNote = p.alt && p.alt.id && p.alt.id.note;
+      const text = note && p.note && idNote ? { en: p.note.text, id: idNote.text } : note && note.text;
+      if (note && window.CapsaMemory) window.CapsaMemory.note(note.round, note.name, text, note.w);
+      for (const s of steps || []) { const f = R[s.do]; if (f) { try { f(s); } catch (e) { console.warn('[stage]', s.do, e); } } await sleep(nextOf(s)); }
     } catch (e) { console.warn('[stage]', e); }
     busy = false; run();
   }
@@ -408,23 +420,27 @@
     const drama = Math.min(100, 12 + bad * 6 + M.ezLosses * 15 + M.bombs * 9 + M.moments.filter((m) => m.w >= 6).length * 8);
     const top = [...M.moments].sort((a, b) => b.w - a.w || b.round - a.round).slice(0, 3);
     const pick = (a) => a[Math.floor(Math.random() * a.length)];
-    return `<div class="cd-sum" role="dialog" aria-label="Laporan pertandingan">
-      <div class="cd-rc-title">LAPORAN PERTANDINGAN</div>
-      <div class="cd-rc-meta">${rounds} ronde · disusun oleh sistem yang tidak netral</div>
+    const w = wins(mvp), lo = mem.losses(sus);
+    return `<div class="cd-sum" role="dialog" aria-label="${tr('Match report', 'Laporan pertandingan')}">
+      <div class="cd-rc-title">${tr('MATCH REPORT', 'LAPORAN PERTANDINGAN')}</div>
+      <div class="cd-rc-meta">${tr(`${rounds} round${rounds === 1 ? '' : 's'} · compiled by a non-neutral system`, `${rounds} ronde · disusun oleh sistem yang tidak netral`)}</div>
       <div class="cd-rc-lines">
-        <div><span>MVP</span><span>${esc(mvp || '-')} (${wins(mvp)} menang)</span></div>
-        <div><span>Tersangka utama</span><span>${esc(sus || '-')} (${mem.mode() === 'last' ? `${mem.losses(sus)}× kalah` : `−${pen(sus)} poin`})</span></div>
-        <div><span>Keputusan buruk tercatat</span><span>${bad} (data internal)</span></div>
-        <div><span>"EZ" yang tidak terbukti</span><span>${M.ezLosses}</span></div>
-        <div><span>Kartu 2 dibawa mati</span><span>${M.twosDied}</span></div>
-        <div><span>Bom dipakai</span><span>${M.bombs}</span></div>
-        <div><span>Tingkat drama</span><span>${drama}%</span></div>
+        <div><span>MVP</span><span>${esc(mvp || '-')} (${tr(`${w} win${w === 1 ? '' : 's'}`, `${w} menang`)})</span></div>
+        <div><span>${tr('Prime suspect', 'Tersangka utama')}</span><span>${esc(sus || '-')} (${mem.mode() === 'last' ? tr(`lost ${lo}×`, `${lo}× kalah`) : tr(`−${pen(sus)} pts`, `−${pen(sus)} poin`)})</span></div>
+        <div><span>${tr('Bad decisions on record', 'Keputusan buruk tercatat')}</span><span>${bad} ${tr('(internal data)', '(data internal)')}</span></div>
+        <div><span>${tr('Unproven "EZ"s', '"EZ" yang tidak terbukti')}</span><span>${M.ezLosses}</span></div>
+        <div><span>${tr('2s taken to the grave', 'Kartu 2 dibawa mati')}</span><span>${M.twosDied}</span></div>
+        <div><span>${tr('Bombs used', 'Bom dipakai')}</span><span>${M.bombs}</span></div>
+        <div><span>${tr('Drama level', 'Tingkat drama')}</span><span>${drama}%</span></div>
       </div>
-      ${top.length ? `<div class="cd-sum-h">Momen yang akan terus diungkit</div><div class="cd-rc-lines">${top.map((m) => `<div><span>R${m.round} · ${esc(m.name)}</span><span>${esc(m.text)}</span></div>`).join('')}</div>` : ''}
-      <div class="cd-sum-h">Gelar</div>
+      ${top.length ? `<div class="cd-sum-h">${tr('Moments that will keep coming up', 'Momen yang akan terus diungkit')}</div><div class="cd-rc-lines">${top.map((m) => `<div><span>R${m.round} · ${esc(m.name)}</span><span>${esc(say(m.text))}</span></div>`).join('')}</div>` : ''}
+      <div class="cd-sum-h">${tr('Titles', 'Gelar')}</div>
       <div class="cd-rc-lines">${names.map((n) => `<div><span>${esc(n)}</span><span>${esc(mem.title(n))}</span></div>`).join('')}</div>
-      <div class="cd-rc-foot">${esc(pick(['Laporan ini akan dibahas di grup sampai minggu depan.', 'Semua pihak dimohon tidak membawa dendam. Kecuali yang perlu.', 'Tidak ada yang belajar apa pun hari ini.']))}</div>
-      <button type="button" class="btn primary" data-cd-close>Tutup</button></div>`;
+      <div class="cd-rc-foot">${esc(pick([
+        tr('This report will be discussed in the group chat until next week.', 'Laporan ini akan dibahas di grup sampai minggu depan.'),
+        tr('All parties are asked not to hold grudges. Except where necessary.', 'Semua pihak dimohon tidak membawa dendam. Kecuali yang perlu.'),
+        tr('Nobody learned anything today.', 'Tidak ada yang belajar apa pun hari ini.')]))}</div>
+      <button type="button" class="btn primary" data-cd-close>${tr('Close', 'Tutup')}</button></div>`;
   }
   function openSummary() {
     const wrap = document.createElement('div');
@@ -443,26 +459,29 @@
       const bounty = mem.match().bounty;
       (v.names || []).forEach((n, i) => {
         const seat = document.getElementById('seat-' + i); if (!seat) return;
-        const t = mem.title(n), hunted = bounty && bounty.key === mem.key(n);
-        if (t === 'Pendatang Baru' && !hunted) return;
+        const id = mem.titleId ? mem.titleId(n) : '', hunted = bounty && bounty.key === mem.key(n);
+        const plain = id === 'newcomer' || id === 'regular';   // nothing worth a tag yet
+        if (plain && !hunted) return;
         const row = document.createElement('div'); row.className = 'cd-seat-tag';
-        row.innerHTML = `${hunted ? '<span class="cd-bounty">BOUNTY</span>' : ''}${t !== 'Pendatang Baru' && t !== 'Warga Biasa' ? `<span>${esc(t)}</span>` : ''}`;
+        row.innerHTML = `${hunted ? '<span class="cd-bounty">BOUNTY</span>' : ''}${!plain ? `<span>${esc(mem.title(n))}</span>` : ''}`;
         if (row.textContent) seat.appendChild(row);
       });
     }
     if (v.phase === 'end' && mem.match().rounds.length >= 2) {
       const ctr = document.querySelector('.zone .controls');
-      if (ctr && !ctr.querySelector('[data-cd-sum]')) { const b = document.createElement('button'); b.className = 'btn'; b.dataset.cdSum = '1'; b.textContent = 'Laporan pertandingan'; ctr.appendChild(b); }
+      if (ctr && !ctr.querySelector('[data-cd-sum]')) { const b = document.createElement('button'); b.className = 'btn'; b.dataset.cdSum = '1'; b.textContent = tr('Match report', 'Laporan pertandingan'); ctr.appendChild(b); }
     }
     const panel = document.querySelector('.stats-panel');
     if (panel && window.CapsaComedy && !panel.querySelector('.cd-demos')) {
       const demos = ['rapat-panjang', 'kartu-terbuka', 'pengakuan-diterima', 'modal-awal', 'emote-dikembalikan', 'kebiasaan-baru', 'selamat-datang', 'rivalitas-resmi', 'kejadian-serupa', 'sistem-prihatin', 'kenangan', 'survei', 'noted', 'prasasti', 'mic-dibuka', 'undangan', 'cctv', 'pembukaan', 'garis-polisi', 'arsip', 'hening', 'ganti-dukungan', 'laporan-kinerja', 'penyebab', 'disarankan', 'patch-notes', 'sistem-ikut-main', 'harapan', 'ez-callback', 'learned-nothing'];
       const div = document.createElement('div'); div.className = 'tests cd-demos';
-      div.innerHTML = `<span>Tes komedi:</span>${demos.map((id) => `<button class="chip" data-cd-demo="${id}">${id}</button>`).join('')}${mem.match().rounds.length ? '<button class="chip" data-cd-sum="1">laporan</button>' : ''}`;
+      div.innerHTML = `<span>${tr('Comedy tests:', 'Tes komedi:')}</span>${demos.map((id) => `<button class="chip" data-cd-demo="${id}">${id}</button>`).join('')}${mem.match().rounds.length ? `<button class="chip" data-cd-sum="1">${tr('report', 'laporan')}</button>` : ''}`;
       panel.appendChild(div);
     }
     decorate(); lapCheck(v);
   });
+  // language switched on this phone: rebuild the bits of UI added above on the next render
+  document.addEventListener('capsa:lang', () => { document.querySelectorAll('.cd-demos,[data-cd-sum]:not(.chip)').forEach((x) => x.remove()); decorate(); });
   document.addEventListener('click', (e) => {
     const s = e.target.closest('[data-cd-sum]'); if (s) { e.stopPropagation(); return openSummary(); }
     const d = e.target.closest('[data-cd-demo]'); if (d && window.CapsaComedy) { e.stopPropagation(); window.CapsaComedy.play(d.dataset.cdDemo); }

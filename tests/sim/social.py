@@ -68,7 +68,7 @@ async def main():
     await send_ui(B,'qc.belum','confidence');await A.wait_for_timeout(500)
     la=await vlog(A)
     ok('3 voice line played on Ana (placeholder for the missing file)',any('underdog.belum' in x and ('placeholder' in x or 'file' in x) for x in la[before:]),la)
-    ok('4 missing audio does not break the quick chat',any('Belum selesai' in t for t in await bubbles(A)))
+    ok('4 missing audio does not break the quick chat',any('Not over yet' in t for t in await bubbles(A)))
     # 5 Ana mutes Budi (only on her phone); 6 Cici turns voice lines off
     await A.click('[data-social-open]');await A.click('[data-soc-tab="set"]');await A.click(f'[data-soc-mute="{seat["B"]}"]')
     ok('5 mute button shows muted',await A.locator(f'[data-soc-mute="{seat["B"]}"][aria-pressed="true"]').count()==1)
@@ -81,7 +81,7 @@ async def main():
     ok('5 muted player: no bubble on Ana',not await bubbles(A,'Budi'))
     ok('5 mute is local: Budi sees his own line',bool(await bubbles(B,'Budi')))
     ok('6 voice off on Cici: no voice',len(await vlog(C))==lc0,(await vlog(C))[lc0:])
-    ok('6 voice off on Cici: quick chat still visible',any('Yakin' in t for t in await bubbles(C)))
+    ok('6 voice off on Cici: quick chat still visible',any('You sure' in t for t in await bubbles(C)))
     ok('5 Ana still remembers the line (history)',any(e['id']=='qc.yakin' for e in await A.evaluate("__soc")))
     await A.evaluate(f"CapsaSocial.setMuted({seat['B']},false)");await C.evaluate("CapsaSocial.set('voice',true)")
     # 7 cooldowns: sender side, then a client that skips them is throttled by every receiver
