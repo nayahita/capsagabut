@@ -1,6 +1,9 @@
 /*
- * Chat to the whole table: free text (60 chars), preset lines, and "Colek" (poke one player).
+ * Chat to the whole table: free text (60 chars) and "Colek" (poke one player). Ready-made lines, emotes and voice lines
+ * are the quick chat in src/social/ (validated ids only); this sheet is the separate free-text channel.
  * Every line becomes a 'chat' fact, so it shows on every phone and the comedy layer can remember it.
+ * Free text is the one social input that carries player-typed text: it is trimmed to 60 chars, optionally censored,
+ * clamped again on arrival and only ever inserted with textContent.
  *
  * Everything below in CONFIG is meant to be edited: presets, keyword lists, the sensor word list.
  * Labels the comedy layer reads:
@@ -15,19 +18,8 @@
     maxLen: 60,
     cooldownMs: 3000,
     logSize: 20,
-    presets: [
-      { text: 'EZ', trash: true },
-      { text: 'Ronde ini punya gua', trash: true, prediction: true },
-      { text: 'Santai, masih panjang', trash: true },
-      { text: 'Hoki doang itu', trash: true },
-      { text: 'Awas lu ya', trash: true },
-      { text: 'WKWKWK', trash: true },
-      { text: 'GG' },
-      { text: 'Sabar…' },
-      { text: 'Kok gitu sih' },
-      { text: 'Salah buang gua', confession: true },
-      { text: 'Ampun bang', confession: true },
-    ],
+    // ready-made lines moved to quick chat (src/social/catalog.js, the "Emote" button); add free-text presets here if wanted
+    presets: [],
     pokeLines: ['giliran lu tuh', 'tahan dulu kartunya', 'yakin?', 'gua liatin lu'],
     // lower-case substrings; a match sets the label
     keywords: {
@@ -166,8 +158,13 @@
     return s ? s.getBoundingClientRect() : null;
   }
   if (window.CapsaEvents) window.CapsaEvents.on('fact:chat', (d) => {
+    if (!d || typeof d.text !== 'string') return;
+    const S = window.CapsaSocial, hide = !!(S && d.seat != null && S.hidden(d.seat));
+    d = Object.assign({}, d, { text: d.text.slice(0, CONFIG.maxLen + 24), name: String(d.name || '').slice(0, 24) });
+    if (hide && S.isMuted(d.seat)) return;                       // muted on this phone: not in the log either
     log.push({ name: d.name, text: d.text }); if (log.length > CONFIG.logSize) log.shift();
-    if (open) refresh(); else { unread = Math.min(9, unread + 1); syncBtn(); }
+    if (open) refresh(); else if (!d.qc) { unread = Math.min(9, unread + 1); syncBtn(); }
+    if (d.qc || hide) return;                                    // quick chat draws its own bubble (src/social)
     const r = seatRect(d.seat) || { left: innerWidth / 2 - 50, width: 100, top: innerHeight / 3 - 40, height: 40, bottom: innerHeight / 3 };
     const b = document.createElement('div'); b.className = 'chat-bubble'; b.textContent = d.text;
     b.style.top = (r.bottom + 6) + 'px';

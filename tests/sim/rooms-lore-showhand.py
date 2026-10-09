@@ -43,11 +43,20 @@ async def main():
     await B.mouse.up();await A.wait_for_timeout(700)
     print('released: overlay gone on Ana:',await A.locator('.showhand').count()==0)
     print('reveal remembered on every phone:',[await pg.evaluate("!!(CapsaMemory.round()&&Object.keys(CapsaMemory.round().revealed||{}).length)") for pg in pages])
-    print('cooldown after release:',await B.locator('[data-showhand][disabled]').count()==1)
-    await B.wait_for_timeout(6200)
-    await btn.click();await A.wait_for_timeout(1500);t1=await A.locator('.showhand').count()
-    await A.wait_for_timeout(2300);t2=await A.locator('.showhand').count()
-    print('tap: visible at 1.5s',t1==1,'| gone after ~3.8s',t2==0)
+    print('no cooldown (button enabled):',await B.locator('[data-showhand][disabled]').count()==0)
+    # tap = latch open (PUBG scope style), tap again = close
+    await btn.click();await A.wait_for_timeout(900)
+    print('tap: Budi state',await B.evaluate("CapsaShowHand.state()"),'| Ana sees overlay',await A.locator('.showhand').count()==1)
+    await A.wait_for_timeout(8000)
+    print('tap: still open after 8.9s (keepalive):',await A.locator('.showhand').count()==1)
+    await btn.click();await A.wait_for_timeout(700)
+    print('tap again closes:',await A.locator('.showhand').count()==0,await B.evaluate("CapsaShowHand.state()"))
+    # latched then the sender vanishes: receivers expire it by themselves
+    await btn.click();await A.wait_for_timeout(700)
+    await B.evaluate("window.__bc=CapsaFX.broadcast;CapsaFX.broadcast=()=>{}")  # simulate a dropped phone: no keepalive, no end message
+    await A.wait_for_timeout(8200)
+    print('dropped sender: overlay expired on Ana:',await A.locator('.showhand').count()==0)
+    await B.evaluate("CapsaFX.broadcast=window.__bc");await btn.click();await A.wait_for_timeout(400)
     # play a full round
     steps=0
     while steps<160:

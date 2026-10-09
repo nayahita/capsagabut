@@ -36,7 +36,7 @@ async def main():
     await A.click('[data-act="host-start"]');await A.wait_for_timeout(700)
     await B.screenshot(path=OUT+'/game_b.png')
     # Emote from Budi should pop on Ana's screen
-    await B.click('.emo-btn');await B.click('[data-emote="laugh"]');await A.wait_for_timeout(300)
+    await B.click('.emo-btn');await B.click('[data-soc-tab="emote"]');await B.click('[data-social="emo.laugh"]');await A.wait_for_timeout(300)
     print('emote seen on Ana:',await A.locator('.emote-pop').count()>0)
     steps=0;turns=[]
     while steps<160:

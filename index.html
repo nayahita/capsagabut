@@ -259,30 +259,53 @@ button.card[aria-pressed="true"]{transform:translateY(-18px);box-shadow:0 0 0 3p
 .tests span{font-size:12px;color:var(--muted);margin-right:2px}
 /* phone layout: hand visible without scrolling, bigger cards */
 .lastlog{display:none}
+/* iOS zooms the page when a focused input is under 16px, and stays zoomed: keep inputs at 16px */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+input,select,textarea{font-size:16px}
 @media (max-width:600px){
-  :root{--cw:min(60px, calc((100vw - 56px) / 6.6))}
-  .app{gap:10px;padding-block:10px 18px}
-  .top{gap:8px}
-  .top-actions .btn{padding:6px 12px;font-size:13px}
-  .seats{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-  .seat{padding:7px 9px;gap:2px 8px;grid-template-columns:minmax(0,1fr) auto auto}
+  body{font-size:14px}
+  :root{--cw:min(54px, calc((100vw - 40px) / 6.05))}
+  .app{gap:8px;padding-block:8px 14px}
+  .top{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
+  .brand{gap:2px 8px;align-items:baseline}.brand h1{font-size:21px}.meta{font-size:10px;letter-spacing:.06em}
+  .top-actions{flex-wrap:nowrap;overflow-x:auto;gap:6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:1px}
+  .top-actions::-webkit-scrollbar{display:none}
+  .top-actions .btn{padding:5px 11px;font-size:12px;white-space:nowrap;flex:none}
+  /* seats: one compact row */
+  .seats{grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:5px}
+  .seat{position:relative;padding:6px 7px;border-radius:10px;gap:2px 4px;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"nm nm" "ct sc"}
   .seat .mini{display:none}
-  .seat .emo-btn{width:30px;height:36px}
-  .board{min-height:118px;padding:14px 10px;gap:8px;border-radius:20px}
-  .board::before{inset:6px;border-radius:15px}
-  .board .who{font-size:17px}
-  .board .sub{font-size:13px}
-  .played .card{--cw:clamp(40px, 12vw, 56px)}
+  .seat .nm{grid-area:nm;font-size:12.5px;padding-right:20px}
+  .seat .nm .pill{display:block;width:max-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;margin:2px 0 0;font-size:9px;padding:0 5px}
+  .seat .nm .you{display:none}
+  .seat > span:empty{display:none}
+  .seat .emo-btn{position:absolute;top:3px;right:3px;width:22px;height:26px}
+  .seat .ct{grid-area:ct;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;align-self:end}
+  .seat .ct small{display:none}
+  .seat .ct::before{content:"";display:inline-block;width:7px;height:10px;border-radius:2px;background:var(--brass);opacity:.7;margin-right:4px;vertical-align:-1px}
+  .seat .sc{grid-area:sc;grid-row:auto;font-size:12px;align-self:end;display:flex;flex-direction:row-reverse;align-items:baseline;gap:3px;margin-left:8px}
+  .seat .sc small{display:inline;font-size:8.5px}
+  .board{min-height:86px;padding:10px 8px;gap:6px;border-radius:16px}
+  .board::before{inset:5px;border-radius:12px}
+  .board .who{font-size:15px}
+  .board .sub{font-size:12px}
+  .played .card{--cw:clamp(36px, 10.5vw, 48px)}
   .board-wrap .log{display:none}
-  .lastlog{display:block;margin:-2px 0 0;text-align:center;font-size:12px;color:var(--muted)}
-  .zone{padding:12px;gap:8px;min-height:0}
-  .zone-head h2{font-size:19px}
-  .hand{padding-top:20px}
-  .hand .card + .card{margin-left:calc(var(--cw) * -0.55)}
-  .controls{gap:8px}
-  .controls .btn{min-width:0;flex:1;padding:11px 10px}
-  .setup{gap:16px}
+  .lastlog{display:block;margin:-2px 0 0;text-align:center;font-size:11px;color:var(--muted)}
+  .zone{padding:10px;gap:7px;min-height:0;border-radius:14px}
+  .zone-head{gap:6px}
+  .zone-head h2{font-size:16px}.zone-head h2 small{font-size:11px;margin-left:4px}
+  .seg button{padding:3px 9px;font-size:11px}
+  .timer{font-size:11px;gap:8px}.timer b{font-size:13px}
+  .hand{padding:14px 0 4px;justify-content:center;overflow-x:visible}
+  .hand .card + .card{margin-left:calc(var(--cw) * -0.58)}
+  .quick{gap:4px}.quick .lbl{font-size:10px}.chip{padding:4px 9px;font-size:12px}
+  .status{font-size:12.5px;min-height:18px}
+  .controls{gap:6px}
+  .controls .btn{min-width:0;flex:1;padding:9px 8px;font-size:14px}
+  .setup{gap:12px}
   .showfan{display:none}
+  .lbl{font-size:10.5px}
 }
 /* online: setup form, lobby */
 .join{display:flex;gap:8px;flex-wrap:wrap}
@@ -335,6 +358,22 @@ button,.card{touch-action:manipulation}
 .tag-mayhem{color:#ffd166}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}.fx-text,.emote-pop{animation-name:fxFade}.mascot *{animation:none!important}.fx-text .rays{animation:none}}
+/* phone overrides for rules defined further down */
+@media (max-width:600px){
+  .lobby{gap:10px;padding-block:4px}
+  .code-card{padding:14px;gap:8px;border-radius:14px}
+  .code{gap:6px}.code span{font-size:clamp(26px,9vw,40px);padding:8px 0 5px;border-radius:9px}
+  .code-card p{font-size:13px;margin:0}
+  .linkrow code{font-size:11px}
+  .plist li{padding:6px 10px;font-size:14px}
+  .result th,.result td{padding:6px 6px;font-size:13px}
+  .emote-pop .mascot{width:62px}.emote-pop .say{font-size:16px;padding:2px 9px 1px;border-width:2px}
+  .fx-text b{font-size:clamp(34px,11vw,56px);-webkit-text-stroke:2px #3a1a06}
+  .fx-text span{font-size:14px}
+  .hero h2{font-size:28px;margin-bottom:6px}.hero p{font-size:13px}
+  .panel{padding:14px;gap:12px;border-radius:14px}
+  .names input{padding:8px 10px}
+}
 </style>
 </head>
 <body>
@@ -583,8 +622,11 @@ const EMOTES={
   cool:{label:'Santai',say:'EZ'},
 };
 const INK='#1d1d24',MOUTH='#5a1a14',TEAR='#7cc7ff';
+/* extra faces registered by src/social (CapsaFX.addEmote): { face(h) → svg, bg? } */
+const FACES={};
 function mascotSVG(e){
-  const face=e==='angry'?'#ffc4b6':'#fbf7ee';
+  const X=FACES[e];
+  const face=(X&&X.bg)||(e==='angry'?'#ffc4b6':'#fbf7ee');
   const ln=`fill="none" stroke="${INK}" stroke-width="4.5" stroke-linecap="round"`;
   let f='';
   switch(e){
@@ -607,6 +649,7 @@ function mascotSVG(e){
       <text x="78" y="30" font-family="Lilita One, Rubik, sans-serif" font-size="22" fill="#c2312a">!!</text>`;break;
     case 'cool':f=`<g class="m-glasses"><rect x="24" y="44" width="23" height="15" rx="6" fill="${INK}"/><rect x="53" y="44" width="23" height="15" rx="6" fill="${INK}"/><path d="M47 49h6" stroke="${INK}" stroke-width="4"/><path d="M29 48l7 0" stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".7"/></g>
       <path d="M38 76q13 7 25-5" ${ln}/>`;break;
+    default:if(X){try{f=X.face({ln,INK,MOUTH,TEAR})}catch(err){f=''}}
   }
   return `<svg viewBox="0 0 100 120" class="mascot m-${e}" aria-hidden="true"><g class="m-body">
     <rect x="12" y="10" width="76" height="100" rx="14" fill="${face}" stroke="#e2b04f" stroke-width="5"/>
@@ -623,7 +666,7 @@ function emote(i,e,auto=false,silent=false){
   x=Math.min(Math.max(x,70),innerWidth-70);y=Math.min(Math.max(y,10),innerHeight-200);
   const d=document.createElement('div');d.className='emote-pop';d.style.left=x+'px';d.style.top=y+'px';d.setAttribute('aria-hidden','true');
   d.innerHTML=`${mascotSVG(e)}<div class="say">${EMOTES[e].say}</div><div class="from">${esc(G.players[i].name)}</div>`;
-  document.body.appendChild(d);if(!silent)SFX.emote[e]();setTimeout(()=>d.remove(),2300);
+  document.body.appendChild(d);if(!silent&&SFX.emote[e])SFX.emote[e]();setTimeout(()=>d.remove(),2300);
 }
 
 /* ---------- visual effects ---------- */
@@ -741,7 +784,16 @@ function comboFx(combo,who,i,cards){
 
 /* ---------- public effects API (used by src/reactions.js) ---------- */
 window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardCenter,particle:fxAdd,mascotSVG,
-  emote:(i,e)=>emote(i,e,true),audio:()=>{const a=ac();return a?{ctx:a,out:BUS}:null},soundOn:()=>soundMode!=='off',
+  emote:(i,e)=>emote(i,e,true),
+  addEmote:(id,d)=>{if(!/^[a-z0-9-]{1,24}$/.test(id)||!d)return false;if(!EMOTES[id])EMOTES[id]={label:String(d.label||id),say:String(d.say||'')};if(typeof d.face==='function')FACES[id]={face:d.face,bg:d.bg};return true},
+  emoteSfx:(e)=>{const s=SFX.emote;if(s&&s[e])s[e]()},
+  /* send a social action (src/social): online the room uid and server time are stamped here, not by the module */
+  social:(d)=>{if(!G||!d||typeof d.id!=='string')return false;const on=isOnline();const seat=on?G.online.me:d.seat;
+    if(!Number.isInteger(seat)||!G.players[seat])return false;
+    const ev={t:'social',id:d.id.slice(0,40),seat,r:G.round,n:String(d.n||'').slice(0,24)};if(Number.isInteger(d.to))ev.to=d.to;
+    if(on){if(!NET)return false;ev.uid=NET.uid}else ev.ts=Date.now();
+    fx(ev);return true},
+  audio:()=>{const a=ac();return a?{ctx:a,out:BUS}:null},soundOn:()=>soundMode!=='off',
   cardHTML:(c)=>cardHTML(c),label:(c)=>label(c),
   /* module hooks: everything below is read-only or effect-only; no game rules */
   fact:(type,data)=>fact(type,data),
@@ -751,7 +803,8 @@ window.CapsaFX={banner,confetti,explode,shake,flash,ring,suitRain,streaks,boardC
     online:isOnline(),me:G.online?G.online.me:null,authority:!G.online||G.online.isHost,timer:G.opts.timer,
     hand:G.online&&G.players[G.online.me]?G.players[G.online.me].hand.slice():null,pids:G.pids||null,room:NET?NET.code:null,
     sameRoom:!!(G.online&&G.opts.sameRoom),mode:lastMode()?'last':'points',left:G.phase==='turn'&&G.deadline?G.deadline-Date.now():null,
-    active:G.players.map(p=>!p.done)}
+    active:G.players.map(p=>!p.done),uids:G.uids||null,uid:NET?NET.uid:null,
+    offline:G.online&&NET?G.uids.map(u=>!!(NET.players&&NET.players[u]&&NET.players[u].online===false)):null}
     :{phase:NET?'lobby':'setup',online:!!NET,authority:!NET||!!NET.isHost,me:null,names:[],room:NET?NET.code:null},
   /* the room this phone is in (online), for modules that keep notes in it; only the host may write */
   room:()=>NET?{code:NET.code,isHost:!!NET.isHost,uid:NET.uid,players:NET.players,
@@ -812,6 +865,8 @@ function fact(type,data){fx({t:'fact',type,data})}
 function playEvent(ev){
   if(ev.t==='fact'){if(window.CapsaEvents)window.CapsaEvents.ingest(ev.type,ev.data);return}
   if(ev.t==='mod'){document.dispatchEvent(new CustomEvent('capsa:mod',{detail:{type:ev.type,data:ev.data}}));return}
+  /* player-sent quick chat / emote: validated and drawn by src/social/social.js */
+  if(ev.t==='social'){document.dispatchEvent(new CustomEvent('capsa:social',{detail:ev}));return}
   if(!G)return;
   switch(ev.t){
     case 'combo':SFX.card();comboFx({name:ev.name,key:ev.key,size:(ev.cards||[]).length},ev.who,ev.seat,ev.cards||[]);break;
@@ -837,6 +892,7 @@ function playEvent(ev){
   }
 }
 function sendEmote(i,e){
+  if(window.CapsaSocial)return window.CapsaSocial.send('emo.'+e,{seat:i});
   const now=Date.now();if((emoteCooldown[i]||0)>now)return;emoteCooldown[i]=now+1500;
   fx({t:'emote',seat:i,e});
   if(G&&G.players[i])fact('emote',{seat:i,name:G.players[i].name,e});
@@ -1289,7 +1345,7 @@ function headerHTML(){
   let meta;
   if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v12.1`;
+  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v13`;
   const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>
@@ -1391,7 +1447,7 @@ function lobbyHTML(){
   </section>`;
 }
 function seatsHTML(){
-  return `<section class="seats" aria-label="Pemain">${G.players.map((p,i)=>{
+  return `<section class="seats" aria-label="Pemain" style="--n:${G.n}">${G.players.map((p,i)=>{
     const now=i===G.turn&&G.phase!=='end',lm=lastMode();
     const isMe=isOnline()&&i===G.online.me;
     const off=isOnline()&&NET&&NET.players[G.uids[i]]&&NET.players[G.uids[i]].online===false;
@@ -1402,7 +1458,7 @@ function seatsHTML(){
       <div class="nm">${esc(p.name)}${isMe?' <small class="you">(lu)</small>':''}${pill}</div>
       <div class="sc">${lm?`${p.score}<small>kalah</small>`:`${p.score>0?'+':''}${p.score}<small>poin</small>`}</div>
       ${canEmote?`<button class="emo-btn" data-emote-open="${i}" aria-expanded="${picker===i}" aria-label="Emote ${esc(p.name)}" title="Emote">${mascotSVG('laugh').replace('m-laugh','m-icon')}</button>`:'<span></span>'}
-      <div class="ct">${p.hand.length} kartu</div>
+      <div class="ct">${p.hand.length}<small> kartu</small></div>
     </div>`}).join('')}</section>${pickerHTML()}`;
 }
 function pickerHTML(){
@@ -1591,6 +1647,8 @@ else if(hashCode&&savedRoom()===hashCode){joinRoom(hashCode)}
 <script src="src/comedy/stage.js"></script>
 <script src="src/chat.js"></script>
 <script src="src/showhand.js"></script>
+<script src="src/social/catalog.js"></script>
+<script src="src/social/social.js"></script>
 <script>if("serviceWorker" in navigator&&location.protocol==="https:"){addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}</script>
 </body>
 </html>

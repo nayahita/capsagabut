@@ -198,7 +198,8 @@
     hotPing();
     M.emotes.push({ seat: d.seat, name: d.name, key: key(d.name), e: d.e, t: Date.now(), round: R ? R.n : 0 });
     if (M.emotes.length > 60) M.emotes.shift();
-    if (R && d.seat != null) R.emoted[d.seat] = d.e;
+    // taunt: emotes from src/social carry their tone; the six original ones fall back to laugh/cool
+    if (R && d.seat != null) R.emoted[d.seat] = { e: d.e, taunt: d.taunt != null ? !!d.taunt : ['laugh', 'cool'].includes(d.e) };
   });
   // show-my-hand (online taunt)
   E.on('fact:reveal', (d) => {
@@ -365,9 +366,9 @@
       if (outcome === 'lost') { moment(d.round, nm[i], 'pamer kartu, terus kalah', 7, true, 'revealLost'); addSetup({ type: 'revealLost', name: nm[i], round: d.round, cards: r.cards, cardsLeft: d.counts[i] }); }
       sig('MEM_REVEAL_RESOLVED', { seat: i, name: nm[i], outcome, cards: r.cards, cardsLeft: d.counts[i], secs: Math.max(1, Math.round((now - r.t) / 1000)) });
     });
-    Object.entries(R.emoted || {}).forEach(([s, e]) => {
-      const i = +s; if (!lost(i) || !['laugh', 'cool'].includes(e) || d.counts[i] < 5) return;
-      sig('MEM_EMOTE_BACKFIRE', { seat: i, name: nm[i], emote: e, cardsLeft: d.counts[i] });
+    Object.entries(R.emoted || {}).forEach(([s, x]) => {
+      const i = +s; if (!lost(i) || !x || !x.taunt || d.counts[i] < 5) return;
+      sig('MEM_EMOTE_BACKFIRE', { seat: i, name: nm[i], emote: x.e, cardsLeft: d.counts[i] });
     });
     // head-to-head, this match (added to the lore at match:end)
     nm.forEach((n, i) => { if (!lost(i)) return; const kk = [key(wName), key(n)].sort().join('|'); const h = M.h2h[kk] = M.h2h[kk] || {}; h[key(wName)] = (h[key(wName)] || 0) + 1; });

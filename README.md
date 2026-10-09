@@ -32,7 +32,12 @@ Nanti muncul ikon Capsa di layar HP. Dibukanya full screen tanpa address bar. Mo
 
 Kartu lu cuma kelihatan di HP lu. Emote, efek combo, dan suara muncul di semua HP. Aturan room (mode, timer, aturan bom) ikut pengaturan host pas bikin room.
 
-**Pamer kartu:** di mode online ada tombol **Pamer kartu** di samping kartu lu. Tap = semua orang lihat kartu lu 3 detik. Tahan = kelihatan selama ditahan (maks 8 detik). Abis itu ada jeda 6 detik. Sistem nyatet siapa yang pamer, jadi kalau abis pamer malah kalah, itu bakal diinget.
+**Pamer kartu:** di mode online ada tombol **Pamer kartu** di samping kartu lu, cara kerjanya kayak tombol scope di game tembak-tembakan HP:
+- **Tap** (sentuh sebentar) → kartu lu kebuka terus di layar semua orang, sampai lu tap lagi (tombolnya jadi **Tutup kartu**).
+- **Tahan** → kebuka selama lu tahan, lepas = ketutup.
+- Gak ada jeda/cooldown. Kalau kartu lu berubah (abis buang), yang kebuka ikut ke-update. Kalau HP lu putus, kartu lu otomatis hilang dari layar orang lain dalam ±7 detik.
+
+Sistem nyatet siapa yang pamer (sekali per ronde), jadi kalau abis pamer malah kalah, itu bakal diinget.
 
 **Room = geng lu.** Pas host klik **Tutup room**, room-nya gak dihapus, cuma ditutup. Catatan pertandingan (profil pemain, rivalitas, momen, favorit sistem) tetap disimpan di room itu selama **setahun sejak terakhir dibuka**. Minggu depan, siapa pun tinggal masukin kode yang sama, room kebuka lagi dan dia jadi host. Bikin room baru = mulai dari nol.
 
@@ -73,7 +78,7 @@ Contoh:
 - Langka: catatan pembaruan di ronde 10 yang isinya kejadian match ini, "Sistem" ikut duduk di meja terus keluar lagi, atau skor juru kunci tiba-tiba jadi juara satu… "Maaf. Itu harapan, bukan data."
 
 Fitur pendukung:
-- **Chat** (tombol Chat di atas): ketik bebas (60 huruf), preset, atau **Colek** satu pemain (`@nama`, ada garis ke kursinya). Ada riwayat chat, jeda 3 detik per pesan, dan sensor kata kasar (default nyala, bisa dimatiin di tiap HP). Daftar preset, kata kunci, dan kata yang disensor ada di atas `src/chat.js`.
+- **Chat** (tombol Chat di atas): ketik bebas (60 huruf) atau **Colek** satu pemain (`@nama`, ada garis ke kursinya). Ada riwayat chat, jeda 3 detik per pesan, dan sensor kata kasar (default nyala, bisa dimatiin di tiap HP). Kata kunci dan kata yang disensor ada di atas `src/chat.js`. Kalimat siap pakai sekarang ada di **Quick chat** (lihat Emote & quick chat).
 - **Gelar reputasi** di kursi pemain, misalnya "Spesialis Nyaris" atau "Kolektor Kartu 2". Kesimpen di device.
 - Tombol **Laporan pertandingan** di layar hasil ronde (mulai ronde 2), dan **kredit akhir** kalau keluar dari match 8+ ronde.
 - **Statistik → Tes komedi**: preview tiap bit.
@@ -159,9 +164,19 @@ Semua bisa dinyalain/dimatiin di layar awal.
 - **Auto-skip** (default nyala): kalau kartu yang lu buang gak bisa dilawan siapa pun, giliran langsung balik ke lu dan lu bebas buka lagi.
 - **Bom bisa makan 2** (default mati): Four of a Kind atau Straight Flush boleh dibuang buat makan kartu 2 satuan.
 
-## Emote
+## Emote & quick chat
 
-Tiap kursi pemain punya tombol maskot kecil. Klik buat milih emote: **Ketawa, Nangis, Marah, Mantap, Kaget, Santai**. Maskotnya (kartu remi hidup) muncul di bawah kursi pemain itu, lengkap sama suaranya. Ada jeda 1,5 detik per pemain biar gak dispam.
+Tombol maskot (di kursi lu, atau tombol 😏 di samping kartu lu) buka panel kecil di atas kartu:
+- **★ Favorit**: 4 emote + 4 kalimat yang paling sering lu pakai. Dua tap: buka, kirim. Panel nutup sendiri abis ngirim.
+- **Emote** (14): Ketawa, Nangis, Marah, Mantap, Kaget, Santai, Senyum licik, Tepok jidat, Wafat, Datar, Hormat, Keringetan, Tepuk pelan, Penjahat.
+- **Quick chat** per kategori: **Respek** (GG, Main bagus…), **Ejek** (EZ, Gitu doang?, Skill issue…), **Pede** (Liat aja, Belum selesai…), **Reaksi** (HAH?!, Kok bisa?!, Mati gua 💀…), **Bacot** (Jangan senang dulu, Waduh bro…).
+- **Ke**: kirim ke semua atau @satu pemain (kursinya goyang).
+- Yang ada 🔊 punya voice line. Rekamannya belum ada (lu isi sendiri di `audio/voice/`, lihat README di sana); sementara bunyinya "babble" sintetis pendek.
+- **⚙**: voice line nyala/mati, volume voice, sembunyiin emote & chat orang lain, dan **bisukan pemain tertentu**. Semua cuma berlaku di HP lu. Suara game secara umum tetap di tombol **Suara**.
+
+Muncul sebagai gelembung/maskot di bawah kursi pengirim, di semua HP, hilang sendiri dalam 2–3 detik, satu per pemain (yang baru gantiin yang lama). Jeda: emote 1,5 detik, quick chat 1,5 detik (terpisah), voice line ±5 detik per pemain, dan cuma satu voice line bunyi sekaligus. Ngirim hal yang sama berulang-ulang = tampil kecil, tanpa suara. Di mode 1 device, tombol maskot di kursi milih siapa yang "ngomong".
+
+Semua yang lu kirim dicatat (cuma selama match) dan masuk ke memory komedi: "EZ" terus kalah, atau emote ngejek terus kalah banyak, bisa dibales sama sistem. Isi, jeda, dan voice line ada di **`src/social/catalog.js`**; detail arsitektur & keamanan di **[`docs/SOCIAL_SYSTEM.md`](docs/SOCIAL_SYSTEM.md)**.
 
 Emote juga muncul otomatis:
 - Straight → yang buang pasang muka santai
@@ -224,5 +239,5 @@ Suara meja dibikin langsung di browser pakai Web Audio; suara komedi pakai file 
 
 ## Tes
 
-- `bash tests/run.sh` jalanin semua tes unit (Node): aturan komedi, memory, profil & catatan room, mode satu kalah, bit v2, audio director, plus simulasi frekuensi komedi.
-- `bash tests/run.sh --sim` nambahin simulasi browser (Python + Playwright + Chromium): 3 ronde offline, mabar 3 HP, room ditutup lalu dibuka lagi, pamer kartu. Firebase-nya palsu (`tests/sim/fakefb.js`), jadi gak nyentuh database beneran.
+- `bash tests/run.sh` jalanin semua tes unit (Node): aturan komedi, memory, profil & catatan room, mode satu kalah, bit v2, audio director, sistem sosial (validasi, jeda, voice, mute, riwayat), plus simulasi frekuensi komedi.
+- `bash tests/run.sh --sim` nambahin simulasi browser (Python + Playwright + Chromium): 3 ronde offline, mabar 3 HP, room ditutup lalu dibuka lagi, pamer kartu (tahan / tap / putus koneksi), dan emote & quick chat (`tests/sim/social.py`). Firebase-nya palsu (`tests/sim/fakefb.js`), jadi gak nyentuh database beneran.
