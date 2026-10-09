@@ -1,6 +1,6 @@
 // Offline support. Game files are fetched fresh when online (so updates show up right away)
 // and served from the cache when offline.
-const CACHE = 'capsa-v12';
+const CACHE = 'capsa-v13';
 const CORE = [
   './', './index.html', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-maskable.png', './apple-touch-icon.png',

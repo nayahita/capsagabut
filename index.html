@@ -1181,8 +1181,10 @@ function hostStart(){
   G.startedAt=Date.now();
   const d=HOOK('gameStart',{names:G.players.map(p=>p.name),uids:G.uids,claims:G.uids.map(u=>(NET.players[u]||{}).claim||null)});
   G.pids=d.pids||null;delete d.claims;
-  NET.room.child('meta/lastOpen').set(firebase.database.ServerValue.TIMESTAMP).catch(()=>{});
   NET.lastPub='';fact('game:start',d);startRound();flushActions();
+  /* only after the table is published as 'playing': a meta write while the room still says 'lobby'
+     fires our own meta listener right away (Firebase raises local writes synchronously) and would drop the game */
+  NET.room.child('meta/lastOpen').set(firebase.database.ServerValue.TIMESTAMP).catch(()=>{});
 }
 function hostRestore(s,hands){
   G={n:s.n,opts:s.opts,uids:s.uids,round:s.round,lastWinner:s.lastWinner>=0?s.lastWinner:null,sortMode:'rank',pids:s.pids||null,startedAt:s.startedAt||null,
@@ -1287,7 +1289,7 @@ function headerHTML(){
   let meta;
   if(G)meta=`${isOnline()&&NET?`Room ${NET.code} · `:''}Ronde ${G.round} · ${G.n} pemain${G.opts.mode==='mayhem'?' · <span class="tag-mayhem">Mayhem</span>':''}`;
   else if(NET)meta=`Room ${NET.code}`;
-  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v12`;
+  else meta=`2–4 pemain · ${setup.style==='online'?'mabar online':'1 device'} · v12.1`;
   const leaveLabel=NET?(NET.isHost?'Tutup room':'Keluar room'):'Ganti pemain';
   return `<header class="top">
     <div class="brand"><h1>Capsa <span>Banting</span></h1><span class="meta">${meta}</span></div>

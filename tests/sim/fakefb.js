@@ -29,21 +29,22 @@
   const disconnects=[];
   function snap(path,val){return {key:parts(path).pop()||null,ref:new Ref(path),val:()=>val==null?null:JSON.parse(JSON.stringify(val)),exists:()=>val!=null,
     forEach(cb){if(val&&typeof val==='object')for(const k of Object.keys(val)){if(cb(snap(path+'/'+k,val[k]))===true)break}}}}
-  function notify(){
-    const d=load();
+  // like the real SDK: a phone's own writes raise its listeners synchronously; other phones hear about it later
+  function notify(sync){
+    const d=load();const call=f=>sync?f():setTimeout(f,0);
     for(const L of [...listeners]){
       if(L.path==='.info/connected'||L.path==='.info/serverTimeOffset')continue;
       let v=getAt(d,L.path);
-      if(L.ev==='value'){const j=JSON.stringify(v);if(j!==L.last){L.last=j;setTimeout(()=>L.fn(snap(L.path,v)),0)}}
+      if(L.ev==='value'){const j=JSON.stringify(v);if(j!==L.last){L.last=j;call(()=>L.fn(snap(L.path,v)))}}
       else if(L.ev==='child_added'){
         let keys=v&&typeof v==='object'?Object.keys(v):[];
         if(L.limit)keys=keys.sort().slice(-L.limit);
-        for(const k of keys)if(!L.seen.has(k)){L.seen.add(k);const cv=v[k];setTimeout(()=>L.fn(snap(L.path+'/'+k,cv)),0)}
+        for(const k of keys)if(!L.seen.has(k)){L.seen.add(k);const cv=v[k];call(()=>L.fn(snap(L.path+'/'+k,cv)))}
       }
     }
   }
   addEventListener('storage',e=>{if(e.key===KEY)notify()});
-  function write(fn){const d=load();fn(d);prune(d);save(d);notify();return Promise.resolve()}
+  function write(fn){const d=load();fn(d);prune(d);save(d);notify(true);return Promise.resolve()}
   class Query{
     constructor(path,o={}){this.path=path;this.o=o}
     orderByChild(c){return new Query(this.path,{...this.o,order:c})}
